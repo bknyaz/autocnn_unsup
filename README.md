@@ -1,2 +1,2 @@
 # autocnn_unsup
-Scripts implementing unsupervised training of an AutoCNN based on recursive autoconvolution
+Scripts implementing unsupervised layer-wise training of a convolution neural network based on recursive autoconvolution (AutoCNN) in Matlab
