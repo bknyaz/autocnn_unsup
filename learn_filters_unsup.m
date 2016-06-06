@@ -62,7 +62,7 @@ if (~isfield(opts,'whiten'))
     fprintf('whiten: \t\t %d \n', opts.whiten)
 end
 if (~isfield(opts,'whiten_independ'))
-    opts.whiten_independ = true; % true to whiten patches before learning independently for each autoconvolution order
+    opts.whiten_independ = false; % true to whiten patches before learning independently for each autoconvolution order
     fprintf('whiten_independ: \t %d \n', opts.whiten_independ)
 end
 opts.pca_epsilon = 0.05; % whitening regularization constant
@@ -105,19 +105,18 @@ n_max = 0.5*10^5;
 fprintf('-> extracting at least %d patches for %d group(s)... \n', n_max, n_groups)
 nSamples = size(instance_matrix,1);
 opts.batch_size = min(opts.batch_size, nSamples);
-patches = cell(1,n_groups);
+patches = cell(length(opts.conv_orders),n_groups);
 n_max_group = ceil(n_max/max(1,opts.shared_filters*n_groups));
 for group=1:n_groups
     fprintf('group: %d/%d, feature maps: %s \n', group, n_groups, num2str(connections{group}));
-    patches{group} = cell(1,length(opts.conv_orders));
     n_patches = 0;
     offset = 0;
-    patches_batch = zeros(opts.crop_size(1),opts.crop_size(1),opts.sample_size(3),opts.batch_size,'single');
+    patches_batch = zeros(opts.crop_size(1),opts.crop_size(1),length(connections{group}),opts.batch_size,'single');
     if (opts.gpu)
         patches_batch = gpuArray(patches_batch);
     end
     while (n_patches < n_max_group)
-        % featMaps - a 4D array (spatial rows x cols x depth x batch_size)
+        % featMaps - a 4D array (spatial rows x cols x N_filters_prev x batch_size)
         featMaps = reshape(instance_matrix(randperm(nSamples, opts.batch_size),:)', [opts.sample_size, opts.batch_size]);
         if (opts.gpu)
             featMaps = gpuArray(featMaps);
@@ -126,11 +125,11 @@ for group=1:n_groups
         rows = randi([1+offset, 1+opts.sample_size(1)-opts.crop_size(1)-offset], 1, opts.batch_size);
         cols = randi([1+offset, 1+opts.sample_size(2)-opts.crop_size(1)-offset], 1, opts.batch_size);
         for b=1:opts.batch_size
-            patches_batch(:,:,:,b) = featMaps(rows(b):rows(b)+opts.crop_size(1)-1, cols(b):cols(b)+opts.crop_size(1)-1,:,b);
+            patches_batch(:,:,:,b) = featMaps(rows(b):rows(b)+opts.crop_size(1)-1, cols(b):cols(b)+opts.crop_size(1)-1,connections{group},b);
         end
         % X_n - a cell with 4D arrays (spatial rows x cols x depth x batch_size)
-        X_n = autoconv_recursive_2d(patches_batch, max(opts.conv_orders)-1, opts.filter_size, opts.norm_type);
-        X_n = X_n(opts.conv_orders); % take patches of only specified orders
+        X_n = autoconv_recursive_2d(patches_batch, max(opts.conv_orders), opts.filter_size, opts.norm_type);
+        X_n = X_n(opts.conv_orders+1); % take patches of only specified orders
         
         % collect patches independently for each conv_order (n)
         for n=1:numel(X_n)
@@ -141,7 +140,7 @@ for group=1:n_groups
             params_sample = estimate_params(X_n{n});
             X_n{n}(:,:,:,cellfun(@isempty,params_sample)) = [];
             % concatenate into the global set
-            patches{group}{n} = cat(4,patches{group}{n},X_n{n});
+            patches{n,group} = cat(4,patches{n,group},X_n{n});
             n_patches = n_patches + size(X_n{n},4);
         end
     end
@@ -152,36 +151,42 @@ clear instance_matrix;
 if (opts.shared_filters), n_groups = 1; else n_groups = opts.n_groups; end
 params = cell(n_groups,1);
 filters = cell(n_groups,1);
-for group = 1:n_groups
-    % patches normalization and whitening
-    if (opts.whiten_independ)
-        pca_fractions = [0.90,0.95,0.95,0.95,0.95]; % for n=0, 0.90 is good, but for n > 0, 0.95 and larger is better
-    else
-        pca_fractions = 0.99;
-        patches{group} = {cat(4,patches{group}{:})};
+if (opts.shared_filters)
+    for n=1:size(patches,1)
+        patches{n,1} = cat(4,patches{n,:});
     end
-    patches_all = cell(1,numel(patches{group}));
-    for n=1:numel(patches{group})
-        if (opts.shared_filters)
-            patches_all{n} = cat(4,patches{:});
-            patches_all{n} = cat(4,patches_all{n}{n});
-        else
-            patches_all{n} = cat(4,patches{group});
-        end
-        sz = size(patches_all{n});
+    patches = patches(:,1);
+end
+if (opts.whiten_independ)
+    pca_fractions = [0.90,0.95,0.97,0.98,0.99]; % for n=0, 0.90 is good, but for n > 0, 0.95 and larger is better
+else
+    pca_fractions = 0.99;
+    for group = 1:n_groups
+        patches{1,group} = cat(4,patches{:,group});
+    end
+    patches = patches(1,:);
+end
+% patches normalization and whitening
+for group = 1:size(patches,2)
+    for n=1:size(patches,1)
+        sz = size(patches{n,group});
         fprintf('%d patches are extracted \n', sz(4));
-        patches_all{n} = reshape(real(patches_all{n}),[prod(sz(1:3)),sz(4)])';
+        patches{n,group} = reshape(real(patches{n,group}),[prod(sz(1:3)),sz(4)])';
         if (~isempty(opts.patches_norm))
             % important before whitening
             fprintf('-> %s-normalization of patches \n', opts.patches_norm);
-            patches_all{n} = feature_scaling(patches_all{n}, opts.patches_norm);
+            patches{n,group} = feature_scaling(patches{n,group}, opts.patches_norm);
         end
         if (opts.whiten)
-            opts.pca_fraction = pca_fractions(opts.conv_orders(n)); 
-            patches_all{n} = pca_zca_whiten(patches_all{n}, opts);
+            if (opts.whiten_independ)
+                opts.pca_fraction = pca_fractions(opts.conv_orders(n)+1); 
+            else
+                opts.pca_fraction = pca_fractions(1);
+            end
+            patches{n,group} = pca_zca_whiten(patches{n,group}, opts);
         end
     end
-    patches_all = cat(1,patches_all{:});
+    patches_all = cat(1,patches{:,group});
     if (opts.whiten_independ)
         % important before whitening
         fprintf('-> %s-normalization of patches \n', opts.patches_norm);
@@ -191,6 +196,8 @@ for group = 1:n_groups
     end
     
     % learn filters (k-means, k-medoids, ICA, etc.) for the current group
+%     patches_all = feature_scaling(patches_all, 'l2'); % normalization before clustering leads
+    % to more uniform clusters and better looking filters, but surprisingly, hurts classification accuracy
     filters_clusters = learn_filters(patches_all, opts);
     filters_clusters = feature_scaling(filters_clusters, 'l2'); % normalize for better usage as convolution kernels
     
@@ -287,10 +294,11 @@ elseif (strcmpi(opts.learning_method,'vl_gmm'))
     [filters,~,~] = vl_gmm(data', opts.n_filters); % energy
     filters = filters';
 elseif (strcmpi(opts.learning_method,'kmedoids'))
+    % this can be very slow, however, we can enjoy various distance measures
     opts_k = statset('kmedoids');
     opts_k.UseParallel = true;
-    opts_k.MaxIter = 300;
-    [ids,~,~,~,cluster_ids] = kmedoids(data, opts.n_filters, 'Options', opts_k, 'Distance', 'correlation', 'Replicates',4);
+    opts_k.MaxIter = 200;
+    [ids,~,~,~,cluster_ids] = kmedoids(data, opts.n_filters, 'Options', opts_k, 'Distance', 'cosine', 'Replicates',4);
     filters = data(cluster_ids,:);
 elseif (~isempty(strfind(opts.learning_method,'kmeans')))
     if (strcmpi(opts.learning_method,'kmeans'))
@@ -298,14 +306,16 @@ elseif (~isempty(strfind(opts.learning_method,'kmeans')))
                 'NumRepetitions',3,'MaxNumComparisons',2000,'MaxNumIterations',1000,'Initialization','PLUSPLUS');
         filters = filters';
     elseif (strcmpi(opts.learning_method,'kmeans_matlab'))
+        % this can be very slow, however, we can enjoy various distance measures
         opts_k = statset('kmeans');
         opts_k.UseParallel = true;
-        [ids,filters,sumd,D]  = kmeans(data, opts.n_filters,'Distance','correlation','Replicates',4,'MaxIter',500,'Display','final','Options',opts_k);
+        [ids,filters,sumd,D]  = kmeans(data, opts.n_filters,'Distance','cosine','Replicates',4,'MaxIter',200,'Display','final','Options',opts_k);
         delete(gcp)
     else
         error('not supported learning method')
     end
     
+    % collect some statistics of clusters
     cluster_ids = zeros(min(sz(1),100), opts.n_filters); % the closest data points to clusters
     clusters_weights = zeros(1,opts.n_filters,'uint32'); % the number of data points in each cluster
     for clust=1:opts.n_filters

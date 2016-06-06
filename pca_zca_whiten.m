@@ -64,7 +64,7 @@ else
     if (opts.pca_fast)
         str = ' (randomized)';
     end
-    fprintf('-> %s: performing%s PCA %dx%d -> %dx%s \n', opts.pca_mode, str, m, n, m, dim_str); 
+    fprintf('-> performing%s %s: %dx%d -> %dx%s \n', str, opts.pca_mode, m, n, m, dim_str); 
     
     data_mean = mean(data);
     data = bsxfun(@minus, data, data_mean);
