@@ -1,10 +1,13 @@
-function [filters, params] = learn_filters_unsup(instance_matrix, opts)
-% Learns opts.n_filters filters of spatial size opts.filter_size for layer l, depth (number of channels) is defined by opts.connections
-% instance_matrix - input samples to layer l, rows are samples, columns are variables, there are prod(opts.sample_size) columns
+function [filters, params] = learn_filters_unsup(feature_maps, opts)
+% Learns opts.n_filters filters of spatial size opts.filter_size
+% Filters depth (number of channels) is defined by opts.connections
+% feature_maps - input samples to layer l, rows are samples, columns are variables, 
+% there are prod(opts.sample_size) columns
 % params - a cell (for each group) with vectors of the joint spatial and temporal resolutions for each filter
 % opts - a structure with learning method parameters (can be empty to use default values in case of CIFAR-10)
 % Currently, the only supported methods are kmeans, kmedoids and GMM
-% It's highly recommended to install VlFeat (http://www.vlfeat.org/) beforehand, because it tends to be much faster than Matlab implementation
+% It's highly recommended to install VlFeat (http://www.vlfeat.org/) beforehand, 
+% because it tends to be much faster than Matlab implementation
 
 %% Set data dependent parameters
 % the following set of parameters should be specified according to your data
@@ -105,7 +108,7 @@ end
 %% Extract autoconvolutional patches
 n_max = 0.5*10^5;
 fprintf('-> extracting at least %d patches for %d group(s)... \n', n_max, n_groups)
-nSamples = size(instance_matrix,1);
+nSamples = size(feature_maps,1);
 opts.batch_size = min(opts.batch_size, nSamples);
 patches = cell(length(opts.conv_orders),n_groups);
 n_max_group = ceil(n_max/max(1,opts.shared_filters*n_groups));
@@ -119,7 +122,7 @@ for group=1:n_groups
     end
     while (n_patches < n_max_group)
         % featMaps - a 4D array (spatial rows x cols x N_filters_prev x batch_size)
-        featMaps = reshape(instance_matrix(randperm(nSamples, opts.batch_size),:)', [opts.sample_size, opts.batch_size]);
+        featMaps = reshape(feature_maps(randperm(nSamples, opts.batch_size),:)', [opts.sample_size, opts.batch_size]);
         if (opts.gpu)
             featMaps = gpuArray(featMaps);
         end
@@ -147,7 +150,7 @@ for group=1:n_groups
         end
     end
 end
-clear instance_matrix;
+clear feature_maps;
 
 %% Learn filters
 if (opts.shared_filters), n_groups = 1; else n_groups = opts.n_groups; end
