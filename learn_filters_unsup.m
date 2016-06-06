@@ -1,13 +1,16 @@
 function [filters, params] = learn_filters_unsup(feature_maps, opts)
-% Learns opts.n_filters filters of spatial size opts.filter_size
-% Filters depth (number of channels) is defined by opts.connections
-% feature_maps - input samples to layer l, rows are samples, columns are variables, 
+% Learns filters for some layer l 
+% 
+% feature_maps - feature maps of layer l-1 (input samples to layer l), rows are samples, columns are variables, 
 % there are prod(opts.sample_size) columns
-% params - a cell (for each group) with vectors of the joint spatial and temporal resolutions for each filter
 % opts - a structure with learning method parameters (can be empty to use default values in case of CIFAR-10)
+% filters - an array of cells (one cell per group), each cell contains a 4D array (height x width x depth x opts.n_filters)
+% filter depth (number of channels) is defined by opts.connections (if not specified, equals opts.sample_size(end))
+% params - an array of cells (one cell per group) with vectors of the joint spatial and temporal resolutions for each filter
+%
 % Currently, the only supported methods are kmeans, kmedoids and GMM
 % It's highly recommended to install VlFeat (http://www.vlfeat.org/) beforehand, 
-% because it tends to be much faster than Matlab implementation
+% because it tends to be much faster than Matlab implementations
 
 %% Set data dependent parameters
 % the following set of parameters should be specified according to your data
