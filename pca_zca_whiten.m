@@ -1,5 +1,6 @@
 function [data, PCA_matrix, data_mean, L_regul] = pca_zca_whiten(data, opts, varargin)
 % Performs data whitening and PCA or ZCA
+% 
 % varargin - PCA_matrix, data_mean, L_regul
 % opts - a structure with parameters:
 % pca_mode - 'pcawhiten', 'zcawhiten', 'pca' or 'zca'
