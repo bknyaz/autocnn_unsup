@@ -377,6 +377,7 @@ end
 
 function widthData  = effective_width(X, axes)
 % X and axes must be column vectors of the same length
+
 if (min(size(X)) > 1)
     X = X(:);
 end
