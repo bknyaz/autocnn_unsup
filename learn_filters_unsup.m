@@ -3,7 +3,7 @@ function [filters, params] = learn_filters_unsup(instance_matrix, opts)
 % instance_matrix - input samples to layer l, rows are samples, columns are variables, there are prod(opts.sample_size) columns
 % params - a cell (for each group) with vectors of the joint spatial and temporal resolutions for each filter
 % opts - a structure with learning method parameters (can be empty to use default values in case of CIFAR-10)
-% Currently, the only supported methods are kmeans and kmedoids 
+% Currently, the only supported methods are kmeans, kmedoids and GMM
 % It's highly recommended to install VlFeat (http://www.vlfeat.org/) beforehand, because it tends to be much faster than Matlab implementation
 
 %% Set data dependent parameters
@@ -293,7 +293,7 @@ clusters_weights = [];
 if (strcmpi(opts.learning_method,'random'))
     filters = data(randperm(sz(1),opts.n_filters),:);
 elseif (strcmpi(opts.learning_method,'vl_gmm'))
-    [filters,~,~] = vl_gmm(data', opts.n_filters); % energy
+    [filters,~,~] = vl_gmm(data', opts.n_filters);
     filters = filters';
 elseif (strcmpi(opts.learning_method,'kmedoids'))
     % this can be very slow, however, we can enjoy various distance measures
