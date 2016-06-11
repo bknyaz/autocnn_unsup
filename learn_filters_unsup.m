@@ -109,12 +109,12 @@ if (~isfield(opts,'vis'))
 end
 
 %% Extract autoconvolutional patches
-n_max = 0.5*10^5;
-fprintf('-> extracting at least %d patches for %d group(s)... \n', n_max, n_groups)
+n_min = 0.5*10^5;
+fprintf('-> extracting at least %d patches for %d group(s)... \n', n_min, n_groups)
 nSamples = size(feature_maps,1);
-opts.batch_size = min(opts.batch_size, nSamples);
 patches = cell(length(opts.conv_orders),n_groups);
-n_max_group = ceil(n_max/max(1,opts.shared_filters*n_groups));
+n_min_group = ceil(n_min/max(1,opts.shared_filters*n_groups));
+opts.batch_size = min([opts.batch_size, nSamples, n_min_group]);
 for group=1:n_groups
     fprintf('group: %d/%d, feature maps: %s \n', group, n_groups, num2str(connections{group}));
     n_patches = 0;
@@ -123,7 +123,7 @@ for group=1:n_groups
     if (opts.gpu)
         patches_batch = gpuArray(patches_batch);
     end
-    while (n_patches < n_max_group)
+    while (n_patches < n_min_group)
         % featMaps - a 4D array (spatial rows x cols x N_filters_prev x batch_size)
         featMaps = reshape(feature_maps(randperm(nSamples, opts.batch_size),:)', [opts.sample_size, opts.batch_size]);
         if (opts.gpu)

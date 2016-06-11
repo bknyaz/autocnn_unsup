@@ -29,7 +29,7 @@ elseif (nargin > 2)
     end
 else
     projection = false;
-    if (isfield(opts,'pca_dim'))
+    if (isfield(opts,'pca_dim') && ~isempty(opts.pca_dim))
         dim = opts.pca_dim; % the number of PCA dimensionalities (principal components)
         dim_str = num2str(dim);
     elseif (isfield(opts,'pca_fraction'))
