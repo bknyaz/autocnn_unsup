@@ -1,6 +1,6 @@
 function [x_ijk,  c] = lcn(x_ijk, c)
 % Local contrast normalization
-% according to Jarrett et. al "What is the Best Multi-Stage Architecture for Object Recognition?"
+% according to Jarrett et al. "What is the Best Multi-Stage Architecture for Object Recognition?"
 % i - feature map index
 % j,k and p,q - spatial indices
 % c - constant (mean(sigma_jk(:)))
