@@ -4,7 +4,7 @@ Matlab scripts implementing the model from http://arxiv.org/abs/1606.00611 on un
 The rest of the scripts is coming
 
 ## Requirements
-For faster filters learning it's highly recommended to use VLFeat (http://www.vlfeat.org/), and for faster forward pass - MatConvNet (http://www.vlfeat.org/matconvnet/). Although, in the scripts there is still an option to use built-in Matlab implementations.
+For faster filters learning it's highly recommended to use VLFeat (http://www.vlfeat.org/), and for faster forward pass - MatConvNet (http://www.vlfeat.org/matconvnet/). Although, in the scripts we try to make it possible to choose between built-in Matlab and third party implementations.
 
 
 
