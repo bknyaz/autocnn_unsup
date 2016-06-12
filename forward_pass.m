@@ -49,12 +49,6 @@ for layer_id = 1:n_layers
         net.layers{layer_id}.filters, net.layers{layer_id});
     
     % apply feature normalization for each sample
-    if (~isempty(net.layers{layer_id}.norm))
-        feature_maps = feature_scaling(feature_maps, net.layers{layer_id}.norm);
-        if (net.layers{layer_id}.multidict)
-            feature_maps_multi{layer_id} = feature_scaling(feature_maps_multi{layer_id}, net.layers{layer_id}.norm);
-        end
-    end
     
     % collect feature maps statistics from the training samples
     if (isfield(net.layers{layer_id},'stats') && ~isempty(net.layers{layer_id}.stats))
@@ -81,7 +75,10 @@ if (net.layers{1}.multidict)
         feature_maps = cat(2,feature_maps,feature_maps_multi{layer_id});
     end
     % normalize concatenated features
-    feature_maps = feature_scaling(feature_maps, net.layers{end}.norm);
+    for sample=1:net.layers{1}.batch_size:size(feature_maps,1)
+        feature_maps(sample:sample+net.layers{1}.batch_size-1,:) = ...
+            feature_scaling(feature_maps(sample:sample+net.layers{1}.batch_size-1,:), net.layers{end}.norm);
+    end
 end
 
 time = toc(time);
@@ -99,7 +96,7 @@ if (~isfield('opts','conv_pad'))
 end
 
 filters = norm_5d(filters); % normalize filters
-if (~isempty(opts.gpu))
+if (opts.gpu)
     filters = gpuArray(filters);
 end
 
@@ -137,6 +134,9 @@ for batch_id = 1:n_batches
     time = tic; % to measure forward pass speed
     samples_ids = max(1,min(n_samples, (batch_id-1)*opts.batch_size+1:1:batch_id*opts.batch_size));
     [features, stats{batch_id}] = forward_pass_batch(fmaps(samples_ids,:), filters, opts);
+    if (~isempty(opts.norm))
+        for k=1:numel(features), features{k} = feature_scaling(features{k}, opts.norm); end
+    end
     fmaps_out(samples_ids,:) = features{1};
     if (opts.multidict)
         fmaps_out_multi(samples_ids,:) = features{2};
@@ -179,92 +179,92 @@ else
     [fmaps, stats{1}] = feature_scaling(fmaps, 'stat', []);
 end
 
-% divide feature map into groups according to connections
-fmaps_out = cell(1,opts.n_groups);
-for group=1:opts.n_groups
-    % for now connections are binarized (hard), but, in general, they can be soft
-    fmaps_out{group} = bsxfun(@times, fmaps, permute(opts.connections(group,:),[3,1,2]));
-    fmaps_out{group} = fmaps(:,:,sum(sum(sum(abs(fmaps_out{group}),1),2),4) > 1e-10,:);
-end
+if (opts.gpu), fmaps = gpuArray(fmaps); end % send to a GPU in the loop in case of the out of memory exception
 
-% CONVOLUTION
+fmaps_out = cell(2,opts.n_groups);
 % Process in a loop because of overlapping connections (i.e. opts.n_groups*sz_filters(4) > sz_fmaps(3)) and
 % without the loop we have to use smaller (less efficient) batch_size to fit into GPU memory
 % This can be, probably, done faster
 for group=1:opts.n_groups
-    if (~isempty(opts.gpu)), fmaps_out{group} = gpuArray(fmaps_out{group}); end
-    fmaps_out{group} = vl_nnconv(fmaps_out{group}, filters(:,:,:,:,min(group,sz_filters(5))), [], 'stride', opts.conv_stride);
-    if (~opts.lcn)
-        if (~isempty(opts.gpu)), fmaps_out{group} = gather(fmaps_out{group}); end
-    end % otherwise, we will need a GPU array later
+    
+%     Divide feature map into groups according to connections
+%     for now connections are binarized (hard), but, in general, they can be soft
+%     fmaps_out{group} = bsxfun(@times, fmaps, permute(opts.connections(group,:),[3,1,2]));
+%     fmaps_out{group} = fmaps(:,:,sum(sum(sum(abs(fmaps_out{group}),1),2),4) > 1e-10,:);
+    fmaps_out{1,group} = fmaps(:,:,opts.connections(group,:),:); % a much faster way for hard connections
+
+%     if (opts.gpu), fmaps_out{1,group} = gpuArray(fmaps_out{1,group}); end
+    
+    % CONVOLUTION
+    fmaps_out{1,group} = vl_nnconv(fmaps_out{1,group}, filters(:,:,:,:,min(group,sz_filters(5))), [], 'stride', opts.conv_stride);
     % fmaps_out{group} is a 4d array: rows x cols x sz_filters(4) x n_samples
+
+    % RECTIFICATION
+    if (strcmpi(opts.rectifier,'abs'))
+        fmaps_out{1,group} = abs(fmaps_out{1,group});
+    elseif (strcmpi(opts.rectifier,'relu'))
+        fmaps_out{1,group} = vl_nnrelu(real(fmaps_out{1,group}), [], 'leak', opts.rectifier_leak);
+    elseif (strcmpi(opts.rectifier,'logistic'))
+        k = 0.4;
+        fmaps_out{1,group} = 1./(1+exp(-k.*real(fmaps_out{1,group})));
+    else
+        error('not supported rectifier type')
+    end
+
+    fmaps_out{1,group} = max(opts.rectifier_param(1), min(opts.rectifier_param(2), fmaps_out{1,group}));
+    % the first cell is the features that will be passed to the next layers
+    % the second cell is the feauters that will be passed to a classifier (or PCA)
+
+    % POOLING with larger pooling size for the multidictionary features forward passed directly to a classifier
+    if (opts.multidict)
+        pool_size = opts.pool_size;
+        opts.pool_size = opts.pool_size_multidict;
+        if (opts.pruned)
+            fmaps_out{2,group} = fmaps_out{1,group}(:,:,sum(opts.connections_next,1) > max(opts.connections_next(:))*1e-5,:);
+            fmaps_out{2,group} = pool_wrap(fmaps_out{2,group}, opts); 
+        else 
+            fmaps_out{2,group} = pool_wrap(fmaps_out{1,group}, opts); % propagate all features
+        end
+        opts.pool_size = pool_size;
+    end
+
+    % Local contrast normalization (LCN) for the features forward passed to the next layer
+    if (opts.lcn)
+        if (n_samples == 1), fprintf('local contrast normalization \n'); end % print once
+        if (isempty(opts.connections_next))
+            connections = true(size(fmaps_out{1,group},3),1); % LCN for all feature maps
+        else
+            % LCN only for those features connected to the next layer
+            connections = sum(opts.connections_next,1) > max(opts.connections_next(:))*1e-5;
+        end
+        if (nnz(connections) <= 1), error('connections are invalid'); end
+        if (~isempty(opts.stats))
+            fmaps_out{1,group}(:,:,connections,:) = lcn(fmaps_out{1,group}(:,:,connections,:), opts.stats.lcn_mn); 
+        else
+            [fmaps_out{1,group}(:,:,connections,:), stats{1}.lcn_mn] = lcn(fmaps_out{1,group}(:,:,connections,:), []);
+        end
+    else
+        stats{1}.lcn_mn = nan;
+    end
+
+    % POOLING (regular)
+    fmaps_out{1,group} = pool_wrap(fmaps_out{1,group}, opts); 
+    
 end
 
 % Concatenate all groups
-fmaps_out = cat(3,fmaps_out{:}); % 4d array: rows x cols x sz_filters(4)*opts.n_groups x n_samples
-
-% RECTIFICATION
-if (strcmpi(opts.rectifier,'abs'))
-    fmaps_out = abs(fmaps_out);
-elseif (strcmpi(opts.rectifier,'relu'))
-	fmaps_out = vl_nnrelu(real(fmaps_out), [], 'leak', opts.rectifier_leak);
-elseif (strcmpi(opts.rectifier,'logistic'))
-    k = 0.4;
-    fmaps_out = 1./(1+exp(-k.*real(fmaps_out)));
-else
-    error('not supported rectifier type')
+for k=1:size(fmaps_out,1)
+    fmaps_out{k,1} = cat(3,fmaps_out{k,:}); % 4d array: rows x cols x sz_filters(4)*opts.n_groups x n_samples
 end
-
-fmaps_out = {max(opts.rectifier_param(1), min(opts.rectifier_param(2), fmaps_out))};
-% the first cell is the features that will be passed to the next layers
-% the second cell is the feauters that will be passed to a classifier (or PCA)
-
-% POOLING with larger pooling size for the multidictionary features forward passed directly to a classifier
-if (opts.multidict)
-    pool_size = opts.pool_size;
-    opts.pool_size = opts.pool_size_multidict;
-    if (opts.pruned)
-        fmaps_out{2} = fmaps_out{1}(:,:,sum(opts.connections_next,1) > max(opts.connections_next(:))*1e-5,:);
-        fmaps_out{2} = pool_wrap(fmaps_out{2}, opts); 
-    else 
-        fmaps_out{2} = pool_wrap(fmaps_out{1}, opts); % propagate all features
-    end
-    if (opts.lcn && opts.gpu)
-        fmaps_out{2} = gather(fmaps_out{2});
-    end
-    opts.pool_size = pool_size;
-end
-
-% Local contrast normalization (LCN) for the features forward passed to the next layer
-if (opts.lcn)
-    if (n_samples == 1), fprintf('local contrast normalization \n'); end % print once
-    if (isempty(opts.connections_next))
-        connections = true(size(fmaps_out{1},3),1); % LCN for all feature maps
-    else
-        % LCN only for those features connected to the next layer
-        connections = sum(opts.connections_next,1) > max(opts.connections_next(:))*1e-5;
-    end
-    if (nnz(connections) <= 1), error('connections are invalid'); end
-    if (~isempty(opts.stats))
-        fmaps_out{1}(:,:,connections,:) = lcn(fmaps_out{1}(:,:,connections,:), opts.stats.lcn_mn); 
-    else
-        [fmaps_out{1}(:,:,connections,:), stats{1}.lcn_mn] = lcn(fmaps_out{1}(:,:,connections,:), []);
-    end
-else
-    stats{1}.lcn_mn = nan;
-end
-
-% POOLING (regular)
-fmaps_out{1} = pool_wrap(fmaps_out{1}, opts); 
-
-if (opts.lcn && opts.gpu), fmaps_out{1} = gather(fmaps_out{1}); end
-
+fmaps_out = fmaps_out(:,1);
+fmaps_out(cellfun(@isempty,fmaps_out)) = [];
 % reshape features back to vectors
-for k=1:numel(fmaps_out)
-    sz_ouput = size(fmaps_out{k});  % a 4d array: rows x cols x sz_filters(4)*opts.n_groups x n_samples
-    fmaps_out{k} = reshape(fmaps_out{k}, [prod(sz_ouput(1:3)), n_samples]); % sz_ouput(4) can cause an error
+for k=1:size(fmaps_out,1)
+    if (opts.gpu), fmaps_out{k,1} = gather(fmaps_out{k,1});  end
+    sz_ouput = size(fmaps_out{k,1});  % a 4d array: rows x cols x sz_filters(4)*opts.n_groups x n_samples
+    fmaps_out{k,1} = reshape(fmaps_out{k,1}, [prod(sz_ouput(1:3)), n_samples]); % sz_ouput(4) can cause an error
     if (n_samples > 1)
-        fmaps_out{k} = fmaps_out{k}'; % a 2d array: n_samples x prod(sz_ouput(1:3))
+        fmaps_out{k,1} = fmaps_out{k,1}'; % a 2d array: n_samples x prod(sz_ouput(1:3))
     end
 end
 
