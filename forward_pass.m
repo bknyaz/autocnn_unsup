@@ -1,4 +1,4 @@
-function [feature_maps, stats] = forward_pass(feature_maps, net)
+function [fmaps_out, stats] = forward_pass(feature_maps, net)
 % Processes samples (images) 'feature_maps' according to the multilayer architecture of network 'net'
 % Uses Matconvnet for faster convolutions and other standard operations (e.g., pooling)
 % 
@@ -9,26 +9,25 @@ function [feature_maps, stats] = forward_pass(feature_maps, net)
 % other model parameters are fixed (not learned)
 
 % init variables
-time = tic;
+time_global = tic;
 n_layers = numel(net.layers);
 stats = cell(1,n_layers);
 feature_maps_multi = cell(1,n_layers);
 
-% We process samples layer-wise in opposite to traditional batch-wise,
-% so, first, all samples are processed with the first layer filters, then with the second layer filters, etc.
-% It has some advantages, e.g., we have to send filters to a GPU only for the current layer
+n_samples = size(feature_maps,1);
+n_batches = ceil(n_samples/net.layers{1}.batch_size);
+
+features = {feature_maps(1:min(n_samples,2),:)};
+
+% process 2 samples layer wise to check variables and preallocate arrays
 for layer_id = 1:n_layers
-    
     sz_filters = size(net.layers{layer_id}.filters);
     if (length(sz_filters) < 5), sz_filters(5) = 1; end;
     fprintf('-> %s %d: %d feature maps from layer %d used, %d groups, filters %dx%dx%dx%dx%d \n', ...
         upper('layer'), layer_id, nnz(sum(net.layers{layer_id}.connections,1) > 1e-10), layer_id-1, ...
         size(net.layers{layer_id}.connections,1), sz_filters)
     
-    if (layer_id > 1 && isfield(net.layers{layer_id},'lcn_l2') && net.layers{layer_id}.lcn_l2)
-        % useful for MNIST: scale feature maps before passing to the next layer
-        feature_maps = local_fmaps_norm(feature_maps, net.layers{layer_id}.sample_size);
-    end
+    net.layers{layer_id} = set_default_values(net.layers{layer_id});
     
     % for the last layer multidictionary features are not applicable
     if (layer_id == n_layers), net.layers{layer_id}.multidict = false; end % override the value
@@ -44,13 +43,79 @@ for layer_id = 1:n_layers
         net.layers{layer_id}.lcn = layer_id < n_layers;
     end
     
-    % process all samples according to the architecture of layer l
-    [feature_maps, feature_maps_multi{layer_id}, stats{layer_id}] = forward_pass_layer(feature_maps, ...
-        net.layers{layer_id}.filters, net.layers{layer_id});
+    if (~isfield(net.layers{layer_id},'conv_pad'))
+        net.layers{layer_id}.conv_pad = floor([size(net.layers{layer_id}.filters,1),...
+            size(net.layers{layer_id}.filters,2)]./2); % zero padding for convolution
+    end
+
+    net.layers{layer_id}.filters = norm_5d(net.layers{layer_id}.filters); % normalize filters [and send them to a GPU]
+    if (net.layers{layer_id}.gpu)
+        net.layers{layer_id}.filters = gpuArray(net.layers{layer_id}.filters);
+    end
+
+    % Reorganize feature maps according to the connection matrix for memory efficiency
+    % the connection matrix has net.layers{layer_id}.n_groups rows and the number of columns
+    % equals the number of filters in the previous layer, i.e. N_filters_{l-1}
+    % filters is a 5d array: rows x cols x depth x N_filters x n_groups, although depth and n_groups can be 1
+    % feature_maps is a 2d array, which can be reshaped into a 4d array: n_samples x rows x cols x N_filters_{l-1}
+    redundant_features = sum(net.layers{layer_id}.connections,1) < max(net.layers{layer_id}.connections(:))*1e-5;
+    net.layers{layer_id}.connections = net.layers{layer_id}.connections(:,~redundant_features);
+    net.layers{layer_id}.redundant_features = redundant_features;
+
+    % determine the size of feature_maps_out and preallocate an array accordingly
+    % print checksum for the first 2 samples
+    features_check = cell(size(features{1},1),1);
+    for sample_id=1:size(features{1},1)
+        features_check{sample_id} = forward_pass_batch(features{1}(sample_id,:), net.layers{layer_id}.filters, net.layers{layer_id});
+        fprintf('checksum for sample %d = %f \n', sample_id, norm(features_check{sample_id}{1}(:)));
+    end
+    stats{layer_id} = cell(1,n_batches);
+
+    features{1} = cat(1,features_check{1}{1},features_check{2}{1});
+    if (~isempty(net.layers{layer_id}.norm))
+        for k=1:numel(features), features{k} = feature_scaling(features{k}, net.layers{layer_id}.norm); end
+    end
+    if (net.layers{layer_id}.multidict)
+        feature_maps_multi{layer_id} = zeros(n_samples, size(cat(1,features_check{1}{2},features_check{2}{2}),2), 'single');
+        fprintf('-> Multidict feature maps: %dx%d (%s) \n', size(feature_maps_multi), class(feature_maps_multi))
+    else
+        feature_maps_multi{layer_id} = [];
+    end
+end
+fmaps_out = zeros(n_samples, size(features{1},2), 'single');
+fprintf('-> feature maps: %dx%d (%s) \n', size(fmaps_out), class(fmaps_out))
     
-    % apply feature normalization for each sample
+for batch_id = 1:n_batches
+    time = tic; % to measure forward pass speed
+    samples_ids = max(1,min(n_samples, (batch_id-1)*net.layers{1}.batch_size+1:batch_id*net.layers{1}.batch_size));
+    features = {feature_maps(samples_ids,:)};
+    for layer_id = 1:n_layers
+        
+        if (layer_id > 1 && isfield(net.layers{layer_id},'lcn_l2') && net.layers{layer_id}.lcn_l2)
+            % useful for MNIST: scale feature maps before passing to the next layer
+            feature_maps = local_fmaps_norm(feature_maps, net.layers{layer_id}.sample_size);
+        end
+
+        [features, stats{layer_id}{batch_id}] = forward_pass_batch(features{1}, ...
+            net.layers{layer_id}.filters, net.layers{layer_id});
+        % apply feature normalization for each sample
+        if (~isempty(net.layers{layer_id}.norm))
+            for k=1:numel(features), features{k} = feature_scaling(features{k}, net.layers{layer_id}.norm); end
+        end
+        if (net.layers{layer_id}.multidict)
+            feature_maps_multi{layer_id}(samples_ids,:) = features{2};
+        end
+    end
+    fmaps_out(samples_ids,:) = features{1};
     
-    % collect feature maps statistics from the training samples
+    time = toc(time);
+    if (mod(batch_id,net.layers{layer_id}.progress_print)==0), fprintf('batch %d/%d, %3.3f samples/sec \n', batch_id, n_batches, length(samples_ids)/time); end
+end
+
+clear feature_maps;
+
+% collect feature maps statistics from the training samples
+for layer_id = 1:n_layers
     if (isfield(net.layers{layer_id},'stats') && ~isempty(net.layers{layer_id}.stats))
         continue;
     end
@@ -58,100 +123,47 @@ for layer_id = 1:n_layers
     means = []; % mean values of all batches
     stds = []; % std values of all batches
     lcn_means = []; % LCN weighted standard deviations
+    % filter responses mean, min and max values
+    feat_means = [];
+    feat_mins = [];
+    feat_maxs = [];
     for batch=1:numel(stats{layer_id}) % collect for batches
         for group=1:numel(stats{layer_id}{batch}) % collect for groups
             means(batch,group) = stats{layer_id}{batch}{group}.mn;
             stds(batch,group) = stats{layer_id}{batch}{group}.sd;
             lcn_means(batch,group) = stats{layer_id}{batch}{group}.lcn_mn;
+            feat_means(batch,group) = stats{layer_id}{batch}{group}.mean;
+            feat_mins(batch,group) = stats{layer_id}{batch}{group}.min;
+            feat_maxs(batch,group) = stats{layer_id}{batch}{group}.max;
         end
     end
-    stats{layer_id} = struct('mn', mean(means), 'sd', mean(stds), 'lcn_mn', mean(lcn_means));
-    fprintf('layer %d: mn = %f, sd = %f, lcn_mn = %f \n', layer_id, stats{layer_id}.mn, stats{layer_id}.sd, stats{layer_id}.lcn_mn);
+    stats{layer_id} = struct('mn', mean(means(:)), 'sd', mean(stds(:)), 'lcn_mn', mean(lcn_means),...
+        'feat_mean', mean(feat_means(:)), 'feat_min', mean(feat_mins(:)), 'feat_max', mean(feat_maxs(:)));
+    fprintf('layer %d: mn = %f, sd = %f, lcn_mn = %f \n', layer_id, stats{layer_id}.mn, stats{layer_id}.sd, mean(stats{layer_id}.lcn_mn));
 end
 
 % concatenate features from all layers
+fprintf('concatenating and normalizing multidictionary features \n')
 if (net.layers{1}.multidict)
     for layer_id=1:numel(net.layers)-1
-        feature_maps = cat(2,feature_maps,feature_maps_multi{layer_id});
+        fmaps_out = cat(2,fmaps_out,feature_maps_multi{layer_id});
     end
     % normalize concatenated features
-    for sample=1:net.layers{1}.batch_size:size(feature_maps,1)
-        feature_maps(sample:sample+net.layers{1}.batch_size-1,:) = ...
-            feature_scaling(feature_maps(sample:sample+net.layers{1}.batch_size-1,:), net.layers{end}.norm);
+    for sample=1:net.layers{1}.batch_size:size(fmaps_out,1)
+        fmaps_out(sample:sample+net.layers{1}.batch_size-1,:) = ...
+            feature_scaling(fmaps_out(sample:sample+net.layers{1}.batch_size-1,:), net.layers{end}.norm);
     end
 end
 
-time = toc(time);
-fprintf('avg multilayer speed: %3.3f samples/sec \n', size(feature_maps,1)/time);
-
-end
-
-% Processes single layer (helper wrapper function)
-function [fmaps_out, fmaps_out_multi, stats] = forward_pass_layer(fmaps, filters, opts)
-
-% set default values
-opts = set_default_values(opts);
-if (~isfield('opts','conv_pad'))
-    opts.conv_pad = floor([size(filters,1),size(filters,2)]./2); % zero padding for convolution
-end
-
-filters = norm_5d(filters); % normalize filters
-if (opts.gpu)
-    filters = gpuArray(filters);
-end
-
-% Reorganize feature maps according to the connection matrix for memory efficiency
-% the connection matrix has opts.n_groups rows and the number of columns
-% equals the number of filters in the previous layer, i.e. N_filters_{l-1}
-% filters is a 5d array: rows x cols x depth x N_filters x n_groups, although depth and n_groups can be 1
-% feature_maps is a 2d array, which can be reshaped into a 4d array: n_samples x rows x cols x N_filters_{l-1}
-redundant_features = sum(opts.connections,1) < max(opts.connections(:))*1e-5;
-opts.connections = opts.connections(:,~redundant_features);
-opts.redundant_features = redundant_features;
-
-n_samples = size(fmaps,1);
-n_batches = ceil(n_samples/opts.batch_size);
-
-% determine the size of feature_maps_out and preallocate an array accordingly
-% print checksum for the first 2 samples
-for sample_id=1:min(2,n_samples)
-    features = forward_pass_batch(fmaps(sample_id,:), filters, opts);
-    fprintf('checksum for sample %d = %f \n', sample_id, norm(features{1}(:)));
-end
-fmaps_out = zeros(n_samples, numel(features{1}), 'single');
-fprintf('-> feature maps: %dx%d (%s) \n', size(fmaps_out), class(fmaps_out))
-if (opts.multidict)
-    fmaps_out_multi = zeros(n_samples, numel(features{2}), 'single');
-    fprintf('-> Multidict feature maps: %dx%d (%s) \n', size(fmaps_out_multi), class(fmaps_out_multi))
-else
-    fmaps_out_multi = [];
-end
-
-stats = cell(1,n_batches);
-opts.batch_size = min(n_samples, opts.batch_size);
-
-for batch_id = 1:n_batches
-    time = tic; % to measure forward pass speed
-    samples_ids = max(1,min(n_samples, (batch_id-1)*opts.batch_size+1:1:batch_id*opts.batch_size));
-    [features, stats{batch_id}] = forward_pass_batch(fmaps(samples_ids,:), filters, opts);
-    if (~isempty(opts.norm))
-        for k=1:numel(features), features{k} = feature_scaling(features{k}, opts.norm); end
-    end
-    fmaps_out(samples_ids,:) = features{1};
-    if (opts.multidict)
-        fmaps_out_multi(samples_ids,:) = features{2};
-    end
-    time = toc(time);
-    if (mod(batch_id,opts.progress_print)==0), fprintf('batch %d/%d, %3.3f samples/sec \n', batch_id, n_batches, length(samples_ids)/time); end
-end
+time_global = toc(time_global);
+fprintf('total time: %3.2f sec, avg multilayer speed: %3.2f samples/sec \n', time_global, size(fmaps_out,1)/time_global);
 
 end
 
 % Processes single batch
 function [fmaps_out, stats] = forward_pass_batch(fmaps, filters, opts)
 % fmaps is a 2d array: n_samples x variables
-% it can be reshaped into a 4d array:
-% n_samples x rows x cols x N_filters_{l-1}
+% it can be reshaped into a 4d array: n_samples x rows x cols x N_filters_{l-1}
 
 n_samples = size(fmaps,1);
 opts.sample_size(opts.sample_size == 1) = [];
@@ -172,7 +184,7 @@ end
 
 % PREPROCESSING
 % treat the entire batch with all feature map groups as a single vector
-stats = [];
+stats = cell(1,opts.n_groups);
 if (~isempty(opts.stats))
     fmaps = feature_scaling(fmaps, 'stat', opts.stats.mn(1), opts.stats.sd(1));
 else
@@ -211,18 +223,26 @@ for group=1:opts.n_groups
         error('not supported rectifier type')
     end
 
+    if (isempty(opts.stats))
+        stats{group} = stats{1};
+        stats{group}.max = gather(max(fmaps_out{1,group}(:)));
+        stats{group}.min = gather(min(fmaps_out{1,group}(:)));
+        stats{group}.mean = gather(mean(fmaps_out{1,group}(:)));
+    end
+    
     fmaps_out{1,group} = max(opts.rectifier_param(1), min(opts.rectifier_param(2), fmaps_out{1,group}));
-    % the first cell is the features that will be passed to the next layers
-    % the second cell is the feauters that will be passed to a classifier (or PCA)
+    % the first cell {1,group} is the features that will be passed to the next layers
+    % the second cell {2,group} is the features that will be passed to a classifier (or PCA)
 
     % POOLING with larger pooling size for the multidictionary features forward passed directly to a classifier
     if (opts.multidict)
         pool_size = opts.pool_size;
         opts.pool_size = opts.pool_size_multidict;
         if (opts.pruned)
+            % only supported for a 2 layer network
             fmaps_out{2,group} = fmaps_out{1,group}(:,:,sum(opts.connections_next,1) > max(opts.connections_next(:))*1e-5,:);
             fmaps_out{2,group} = pool_wrap(fmaps_out{2,group}, opts); 
-        else 
+        else
             fmaps_out{2,group} = pool_wrap(fmaps_out{1,group}, opts); % propagate all features
         end
         opts.pool_size = pool_size;
@@ -230,7 +250,6 @@ for group=1:opts.n_groups
 
     % Local contrast normalization (LCN) for the features forward passed to the next layer
     if (opts.lcn)
-        if (n_samples == 1), fprintf('local contrast normalization \n'); end % print once
         if (isempty(opts.connections_next))
             connections = true(size(fmaps_out{1,group},3),1); % LCN for all feature maps
         else
@@ -239,12 +258,12 @@ for group=1:opts.n_groups
         end
         if (nnz(connections) <= 1), error('connections are invalid'); end
         if (~isempty(opts.stats))
-            fmaps_out{1,group}(:,:,connections,:) = lcn(fmaps_out{1,group}(:,:,connections,:), opts.stats.lcn_mn); 
+            fmaps_out{1,group}(:,:,connections,:) = lcn(fmaps_out{1,group}(:,:,connections,:), opts.stats.lcn_mn(group)); 
         else
-            [fmaps_out{1,group}(:,:,connections,:), stats{1}.lcn_mn] = lcn(fmaps_out{1,group}(:,:,connections,:), []);
+            [fmaps_out{1,group}(:,:,connections,:), stats{group}.lcn_mn] = lcn(fmaps_out{1,group}(:,:,connections,:), []);
         end
     else
-        stats{1}.lcn_mn = nan;
+        stats{group}.lcn_mn = nan;
     end
 
     % POOLING (regular)
@@ -262,10 +281,8 @@ fmaps_out(cellfun(@isempty,fmaps_out)) = [];
 for k=1:size(fmaps_out,1)
     if (opts.gpu), fmaps_out{k,1} = gather(fmaps_out{k,1});  end
     sz_ouput = size(fmaps_out{k,1});  % a 4d array: rows x cols x sz_filters(4)*opts.n_groups x n_samples
-    fmaps_out{k,1} = reshape(fmaps_out{k,1}, [prod(sz_ouput(1:3)), n_samples]); % sz_ouput(4) can cause an error
-    if (n_samples > 1)
-        fmaps_out{k,1} = fmaps_out{k,1}'; % a 2d array: n_samples x prod(sz_ouput(1:3))
-    end
+    fmaps_out{k,1} = reshape(fmaps_out{k,1}, [prod(sz_ouput(1:3)), n_samples])'; % sz_ouput(4) can cause an error
+    % fmaps_out{k,1} is a 2d array: n_samples x prod(sz_ouput(1:3))
 end
 
 end
