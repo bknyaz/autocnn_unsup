@@ -48,9 +48,19 @@ for layer_id = 1:n_layers
             size(net.layers{layer_id}.filters,2)]./2); % zero padding for convolution
     end
 
+    % prepare filters
+    if (~net.layers{layer_id}.is_vl)
+        net.layers{layer_id}.filters = padarray(net.layers{layer_id}.filters, ...
+            net.layers{layer_id}.sample_size(1:2)-1,0,'post');
+    end
+
     net.layers{layer_id}.filters = norm_5d(net.layers{layer_id}.filters); % normalize filters [and send them to a GPU]
     if (net.layers{layer_id}.gpu)
         net.layers{layer_id}.filters = gpuArray(net.layers{layer_id}.filters);
+    end
+    
+    if (~net.layers{layer_id}.is_vl)
+        net.layers{layer_id}.filters = fft2(net.layers{layer_id}.filters);
     end
 
     % Reorganize feature maps according to the connection matrix for memory efficiency
@@ -149,9 +159,9 @@ if (net.layers{1}.multidict)
         fmaps_out = cat(2,fmaps_out,feature_maps_multi{layer_id});
     end
     % normalize concatenated features
-    for sample=1:net.layers{1}.batch_size:size(fmaps_out,1)
-        fmaps_out(sample:sample+net.layers{1}.batch_size-1,:) = ...
-            feature_scaling(fmaps_out(sample:sample+net.layers{1}.batch_size-1,:), net.layers{end}.norm);
+    for batch_id = 1:n_batches
+        samples_ids = max(1,min(n_samples, (batch_id-1)*net.layers{1}.batch_size+1:batch_id*net.layers{1}.batch_size));
+        fmaps_out(samples_ids,:) = feature_scaling(fmaps_out(samples_ids,:), net.layers{end}.norm);
     end
 end
 
@@ -177,11 +187,13 @@ if (length(sz_filters) < 5), sz_filters(5) = 1; end; % for generalization
 % we prefer to do padding here (before feature scaling) instead of in vl_nnconv 
 % For MNIST it is good because image values are zeros on the boundaries and, 
 % therefore, there is no edge effect
-if (any(sz_fmaps(1:2) > sz_filters(1:2)))
+if (any(sz_fmaps(1:2) > sz_filters(1:2)) && opts.is_vl)
     % zero padding if not a fully connected layer
     fmaps = padarray(fmaps, opts.conv_pad, 0, 'both'); 
 end
-
+if (~opts.is_vl)
+    fmaps = padarray(fmaps, opts.filter_size(1:2)-1,0,'post');
+end
 % PREPROCESSING
 % treat the entire batch with all feature map groups as a single vector
 stats = cell(1,opts.n_groups);
@@ -192,6 +204,10 @@ else
 end
 
 if (opts.gpu), fmaps = gpuArray(fmaps); end % send to a GPU in the loop in case of the out of memory exception
+
+if (~opts.is_vl)
+    fmaps = fft2(fmaps);
+end
 
 fmaps_out = cell(2,opts.n_groups);
 % Process in a loop because of overlapping connections (i.e. opts.n_groups*sz_filters(4) > sz_fmaps(3)) and
@@ -208,7 +224,7 @@ for group=1:opts.n_groups
 %     if (opts.gpu), fmaps_out{1,group} = gpuArray(fmaps_out{1,group}); end
     
     % CONVOLUTION
-    fmaps_out{1,group} = vl_nnconv(fmaps_out{1,group}, filters(:,:,:,:,min(group,sz_filters(5))), [], 'stride', opts.conv_stride);
+    fmaps_out{1,group} = conv_wrap(fmaps_out{1,group}, filters(:,:,:,:,min(group,sz_filters(5))), opts);
     % fmaps_out{group} is a 4d array: rows x cols x sz_filters(4) x n_samples
 
     % RECTIFICATION
@@ -287,6 +303,21 @@ end
 
 end
 
+% Convolution wrapper for convenience
+function fmaps = conv_wrap(fmaps, filters, opts)
+if (opts.is_vl)
+    % using Matconvnet
+    fmaps = vl_nnconv(fmaps, filters, [], 'stride', opts.conv_stride);
+else
+    % using Matlab in the frequency domain
+    fmaps = ifft2(bsxfun(@times, permute(fmaps,[1:3,5,4]), filters));
+    sz = size(fmaps);
+    offset = floor((sz(1:2) - opts.sample_size(1:2))./2);
+    fmaps = squeeze(sum(fmaps(offset+1:end-offset,offset+1:end-offset,:,:,:),3));
+end
+
+end
+
 % Pooling wrapper for convenience
 function fmaps = pool_wrap(fmaps, opts)
 if (opts.pool_size <= 1)
@@ -332,6 +363,9 @@ end
 function opts = set_default_values(opts)
 if (~isfield(opts,'progress_print'))
     opts.progress_print = 10; % print statistics every 10th batch
+end
+if (~isfield(opts,'is_vl'))
+    opts.is_vl = false; % true to use Matconvnet, otherwise use Matlab implementation
 end
 if (~isfield(opts,'conv_stride'))
     opts.conv_stride = 1; % convolution stride
