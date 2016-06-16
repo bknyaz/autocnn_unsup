@@ -7,9 +7,10 @@ function connections = learn_connections_unsup(feature_maps, opts)
 % opts - a structure with parameters of layer l+1
 % connections - a binary connection matrix with opts.n_groups rows and N_filters_l columns
 
-if (opts.n_groups*opts.n_channels_max == opts.sample_size(end))
+if (opts.n_groups*opts.filter_size(3) == opts.sample_size(end))
     % create simple sequential connections in case of a complete connection scheme
-    connections = reshape(1:opts.sample_size(end),opts.n_channels_max,opts.n_groups)';
+    connections = reshape(1:opts.sample_size(end),opts.filter_size(3),opts.n_groups)';
+    fprintf('complete connection scheme is applied \n')
 else
     opts.pca_mode = 'zcawhiten';
     opts.pca_epsilon = 0.05;
@@ -37,8 +38,8 @@ else
                 S_tmp = S_all_it;
                 S_tmp(rand_feats(i),rand_feats(i)) = Inf; % prevent selection of the same feature map
                 [S_min,id] = sort(S_tmp(rand_feats(i),:)); % find the closest feature maps
-                closest = S_min(1:opts.n_channels_max-1); 
-                group = sort([rand_feats(i),id(1:opts.n_channels_max-1)]); % group of feature maps
+                closest = S_min(1:opts.filter_size(3)-1); 
+                group = sort([rand_feats(i),id(1:opts.filter_size(3)-1)]); % group of feature maps
                 cc_tmp = cat(1,connections_tmp,group);
                 % select only unique groups and try to select the groups that connect more feature maps
                 if (length(unique(cc_tmp(:,1))) == size(cc_tmp,1)) 
