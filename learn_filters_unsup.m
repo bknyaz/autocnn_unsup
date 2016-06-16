@@ -1,9 +1,10 @@
 function [filters, params] = learn_filters_unsup(feature_maps, opts)
-% Learns filters for some layer l 
+% Learns filters for some layer l in the unsupervised way
 % 
 % feature_maps - feature maps of layer l-1 (input samples to layer l), rows are samples, columns are variables, 
 % there are prod(opts.sample_size) columns
 % opts - a structure with learning method parameters (can be empty to use default values in case of CIFAR-10)
+% opts.connections - a binary connection matrix with n_groups rows and N_filters_{l-1} columns
 % filters - an array of cells (one cell per group), each cell contains a 4D array (height x width x depth x opts.n_filters)
 % filter depth (number of channels) is defined by opts.connections (if not specified, equals opts.sample_size(end))
 % params - an array of cells (one cell per group) with vectors of the joint spatial and temporal resolutions for each filter
@@ -36,8 +37,8 @@ if (~isfield(opts,'n_groups'))
     fprintf('n_groups: \t\t %d \n', opts.n_groups)
 end
 if (~isfield(opts,'filter_size'))
-    opts.filter_size = [13,13];
-    fprintf('filter_size: \t\t %dx%d \n', opts.filter_size)
+    opts.filter_size = [13,13,3];
+    fprintf('filter_size: \t\t %dx%dx%d \n', opts.filter_size)
 end
 if (~isfield(opts,'crop_size'))
     opts.crop_size = opts.filter_size(1);
@@ -53,11 +54,11 @@ if (~isfield(opts,'norm_type'))
 end
 
 if (~isfield(opts,'connections'))
-    connections{1} = 1:opts.sample_size(end);
+    connections = true(1,opts.sample_size(end));
 else
     connections = opts.connections;
 end
-n_groups = numel(connections);
+n_groups = size(connections,1);
 
 %% Set default values of data independent parameters
 if (~isfield(opts,'patches_norm'))
@@ -116,10 +117,10 @@ patches = cell(length(opts.conv_orders),n_groups);
 n_min_group = ceil(n_min/max(1,opts.shared_filters*n_groups));
 opts.batch_size = min([opts.batch_size, nSamples, n_min_group]);
 for group=1:n_groups
-    fprintf('group: %d/%d, feature maps: %s \n', group, n_groups, num2str(connections{group}));
+    fprintf('group: %d/%d, feature maps: %s \n', group, n_groups, num2str(find(connections(group,:))));
     n_patches = 0;
     offset = 0;
-    patches_batch = zeros(opts.crop_size(1),opts.crop_size(1),length(connections{group}),opts.batch_size,'single');
+    patches_batch = zeros(opts.crop_size(1),opts.crop_size(1),nnz(connections(group,:)),opts.batch_size,'single');
     if (opts.gpu)
         patches_batch = gpuArray(patches_batch);
     end
@@ -133,7 +134,8 @@ for group=1:n_groups
         rows = randi([1+offset, 1+opts.sample_size(1)-opts.crop_size(1)-offset], 1, opts.batch_size);
         cols = randi([1+offset, 1+opts.sample_size(2)-opts.crop_size(1)-offset], 1, opts.batch_size);
         for b=1:opts.batch_size
-            patches_batch(:,:,:,b) = featMaps(rows(b):rows(b)+opts.crop_size(1)-1, cols(b):cols(b)+opts.crop_size(1)-1,connections{group},b);
+            patches_batch(:,:,:,b) = featMaps(rows(b):rows(b)+opts.crop_size(1)-1, ...
+                cols(b):cols(b)+opts.crop_size(1)-1, connections(group,:), b);
         end
         % X_n - a cell with 4D arrays (spatial rows x cols x depth x batch_size)
         X_n = autoconv_recursive_2d(patches_batch, max(opts.conv_orders), opts.filter_size, opts.norm_type);
@@ -216,7 +218,7 @@ for group = 1:size(patches,2)
     [params{group},ids] = sort(params{group},'ascend');
     filters{group} = filters{group}(:,:,:,ids);
 end
-fprintf('filters are learned and connections are created for %d group(s) \n', opts.n_groups)
+fprintf('filters are learned for %d group(s) \n', opts.n_groups)
 
 end
 

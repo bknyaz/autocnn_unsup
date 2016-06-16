@@ -14,23 +14,19 @@ end
 
 for layer_id=1:numel(net.layers)
     
+    % size of inputs to layer 1
     if (layer_id == 1)
-        % size of inputs to layer 1
         net.layers{layer_id}.sample_size = find_value(varargin, 'sample_size', layer_id, []);
-    else
-        % size of inputs to layer > 1
-        net.layers{layer_id}.sample_size = [net.layers{layer_id-1}.sample_size(1:2)./net.layers{layer_id-1}.pool_size,...
-            1,net.layers{layer_id-1}.n_groups*net.layers{layer_id-1}.n_filters];
+        net.layers{layer_id}.filter_size(3) = net.layers{layer_id}.sample_size(end);
     end
     
     % filter response normalization
     net.layers{layer_id}.norm = find_value(varargin, 'conv_norm', layer_id, 'stat');
-    if (strcmpi(net.layers{layer_id}.norm,'rootsift'))
-        net.layers{layer_id}.norm_pow = 0.5; % power for rootsift normalization (otherwise ignored)
-    end
     
-    % number of samples in a batchs
-    net.layers{layer_id}.batch_size = find_value(varargin, 'batch_size', layer_id, 128);
+    % number of samples in a batchs (same for all layers)
+    if (layer_id == 1)
+        net.layers{layer_id}.batch_size = find_value(varargin, 'batch_size', layer_id, 128);
+    end
     
     % Use a GPU
     net.layers{layer_id}.gpu = find_value(varargin, 'gpu', layer_id, true);
@@ -42,7 +38,9 @@ for layer_id=1:numel(net.layers)
     % method to learn filters
     net.layers{layer_id}.learning_method = find_value(varargin, 'learning_method', layer_id, 'kmeans');
     net.layers{layer_id}.norm_type = layer_id; % method to normalize autoconvolutional responses
-    net.layers{layer_id}.shared_filters = find_value(varargin, 'shared_filters', layer_id, true);
+    if (layer_id > 1)
+        net.layers{layer_id}.shared_filters = find_value(varargin, 'shared_filters', layer_id, true);
+    end
     
     % Turn local contrast normalization on/off
     lcn = find_value(varargin, 'lcn', layer_id, -1);
@@ -54,7 +52,7 @@ for layer_id=1:numel(net.layers)
     net.layers{layer_id}.pool_op = find_value(varargin, 'pool_op', layer_id, 'max');
 
     % zero-padding for convolution
-    net.layers{layer_id}.conv_pad = find_value(varargin, 'conv_pad', layer_id, floor(net.layers{layer_id}.filter_size./2));
+    net.layers{layer_id}.conv_pad = find_value(varargin, 'conv_pad', layer_id, floor(net.layers{layer_id}.filter_size(1:2)./2));
     
     % use features from all layers
     net.layers{layer_id}.multidict = find_value(varargin, 'multidict', layer_id, true);
@@ -68,7 +66,9 @@ for layer_id=1:numel(net.layers)
     end
     
     % use data augmentation
-    net.layers{layer_id}.augment = find_value(varargin, 'augment', layer_id, false);
+    if (layer_id == 1)
+        net.layers{layer_id}.augment = find_value(varargin, 'augment', layer_id, false);
+    end
     
     % Print properties
     fprintf('Layer %d \n', layer_id)
@@ -96,6 +96,7 @@ for l=1:n_layers
     net.layers{l}.n_groups = 1;
     
     blocks = strsplit(layers{l},'-');
+    filter_depth = 1;
     for b=1:numel(blocks)
         if (strfind(blocks{b},'conv'))
             id = strfind(blocks{b},'conv');
@@ -105,7 +106,7 @@ for l=1:n_layers
                 net.layers{l}.conv_orders = str2double(blocks{b}(id(1)+4));
             end
         elseif (strfind(blocks{b},'ch'))
-            net.layers{l}.n_channels_max = str2double(blocks{b}(1:end-2));
+            filter_depth = str2double(blocks{b}(1:end-2));
         elseif (strfind(blocks{b},'c'))
             id = strfind(blocks{b},'c');
             net.layers{l}.n_filters = str2double(blocks{b}(1:id(1)-1));
@@ -116,6 +117,7 @@ for l=1:n_layers
             net.layers{l}.n_groups = str2double(blocks{b}(1:end-1));
         end
     end
+    net.layers{l}.filter_size = [net.layers{l}.filter_size,filter_depth];
 end
 
 end
