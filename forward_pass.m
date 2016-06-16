@@ -10,17 +10,26 @@ function [fmaps_out, stats] = forward_pass(feature_maps, net)
 
 % init variables
 time_global = tic;
+if (~iscell(net.layers))
+    net.layers = {net.layers};
+end
 n_layers = numel(net.layers);
 stats = cell(1,n_layers);
-feature_maps_multi = cell(1,n_layers);
+% feature_maps_multi = cell(1,n_layers);
 
 n_samples = size(feature_maps,1);
 n_batches = ceil(n_samples/net.layers{1}.batch_size);
 
 features = {feature_maps(1:min(n_samples,2),:)};
-
+stats_size = cell(1,n_layers);
 % process 2 samples layer wise to check variables and preallocate arrays
+feature_length = zeros(1,n_layers);
+fmaps_out_multi = cell(1,n_layers);
+fprintf('checking and preparing parameters and data \n')
 for layer_id = 1:n_layers
+    if (iscell(net.layers{layer_id}.filters))
+        net.layers{layer_id}.filters = single(cat(5,net.layers{layer_id}.filters{:}));
+    end
     sz_filters = size(net.layers{layer_id}.filters);
     if (length(sz_filters) < 5), sz_filters(5) = 1; end;
     fprintf('-> %s %d: %d feature maps from layer %d used, %d groups, filters %dx%dx%dx%dx%d \n', ...
@@ -44,14 +53,14 @@ for layer_id = 1:n_layers
     end
     
     if (~isfield(net.layers{layer_id},'conv_pad'))
-        net.layers{layer_id}.conv_pad = floor([size(net.layers{layer_id}.filters,1),...
-            size(net.layers{layer_id}.filters,2)]./2); % zero padding for convolution
+        net.layers{layer_id}.conv_pad = floor(net.layers{layer_id}.filter_size(1:2)./2); % zero padding for convolution
     end
 
     % prepare filters
     if (~net.layers{layer_id}.is_vl)
         net.layers{layer_id}.filters = padarray(net.layers{layer_id}.filters, ...
-            net.layers{layer_id}.sample_size(1:2)-1,0,'post');
+            net.layers{layer_id}.sample_size(1:2)-1 + net.layers{layer_id}.conv_pad - ...
+            floor(net.layers{layer_id}.filter_size(1:2)./2),0,'post');
     end
 
     net.layers{layer_id}.filters = norm_5d(net.layers{layer_id}.filters); % normalize filters [and send them to a GPU]
@@ -60,7 +69,8 @@ for layer_id = 1:n_layers
     end
     
     if (~net.layers{layer_id}.is_vl)
-        net.layers{layer_id}.filters = fft2(net.layers{layer_id}.filters);
+        net.layers{layer_id}.dims = 1:2;
+        for d=net.layers{layer_id}.dims, net.layers{layer_id}.filters = fft(net.layers{layer_id}.filters,[],d); end
     end
 
     % Reorganize feature maps according to the connection matrix for memory efficiency
@@ -76,9 +86,19 @@ for layer_id = 1:n_layers
     % print checksum for the first 2 samples
     features_check = cell(size(features{1},1),1);
     for sample_id=1:size(features{1},1)
-        features_check{sample_id} = forward_pass_batch(features{1}(sample_id,:), net.layers{layer_id}.filters, net.layers{layer_id});
+        [features_check{sample_id}, stats_size{layer_id}] = forward_pass_batch(features{1}(sample_id,:), net.layers{layer_id}.filters, net.layers{layer_id});
         fprintf('checksum for sample %d = %f \n', sample_id, norm(features_check{sample_id}{1}(:)));
     end
+    % get size of feature maps
+    if (isempty(net.layers{layer_id}.stats))
+        if (length(stats_size{layer_id}{1}.output_size{1}) < 4)
+            stats_size{layer_id}{1}.output_size{1} = [stats_size{layer_id}{1}.output_size{1}(1:2),1,stats_size{layer_id}{1}.output_size{1}(3)];
+        end
+        if (layer_id < n_layers)
+            net.layers{layer_id+1}.sample_size = stats_size{layer_id}{1}.output_size{1};
+        end
+    end
+    
     stats{layer_id} = cell(1,n_batches);
 
     features{1} = cat(1,features_check{1}{1},features_check{2}{1});
@@ -86,82 +106,98 @@ for layer_id = 1:n_layers
         for k=1:numel(features), features{k} = feature_scaling(features{k}, net.layers{layer_id}.norm); end
     end
     if (net.layers{layer_id}.multidict)
-        feature_maps_multi{layer_id} = zeros(n_samples, size(cat(1,features_check{1}{2},features_check{2}{2}),2), 'single');
-        fprintf('-> Multidict feature maps: %dx%d (%s) \n', size(feature_maps_multi), class(feature_maps_multi))
-    else
-        feature_maps_multi{layer_id} = [];
+        fmaps_out_multi{layer_id} = cat(1,features_check{1}{2},features_check{2}{2});
+        feature_length(layer_id+1) = size(fmaps_out_multi{layer_id},2);
+        fprintf('layer %d feature maps: %dx%d \n', layer_id, n_samples, feature_length(layer_id+1))
     end
+    feature_length(1) = size(features{1},2);
 end
-fmaps_out = zeros(n_samples, size(features{1},2), 'single');
-fprintf('-> feature maps: %dx%d (%s) \n', size(fmaps_out), class(fmaps_out))
+
+% Dimension reduction (optional)
+if (isfield(net.layers{layer_id},'PCA_matrix') && ~isempty(net.layers{layer_id}.PCA_matrix))
+    features = pca_whiten_wrap(cat(2,features{1},fmaps_out_multi{:}), net.layers{layer_id});
+else
+    features = cat(2,features{1},fmaps_out_multi{:});
+end
     
+fmaps_out = zeros(n_samples, size(features,2), 'single');
+fprintf('-> (multidict) feature maps: %dx%d (%s) \n', size(fmaps_out), class(fmaps_out))
+
+fprintf('processing batches \n')    
 for batch_id = 1:n_batches
     time = tic; % to measure forward pass speed
     samples_ids = max(1,min(n_samples, (batch_id-1)*net.layers{1}.batch_size+1:batch_id*net.layers{1}.batch_size));
-    features = {feature_maps(samples_ids,:)};
+    features = feature_maps(samples_ids,:);
+    fmaps_out_batch = zeros(length(samples_ids),sum(feature_length),'single');
     for layer_id = 1:n_layers
         
         if (layer_id > 1 && isfield(net.layers{layer_id},'lcn_l2') && net.layers{layer_id}.lcn_l2)
             % useful for MNIST: scale feature maps before passing to the next layer
-            feature_maps = local_fmaps_norm(feature_maps, net.layers{layer_id}.sample_size);
+            features = local_fmaps_norm(features, net.layers{layer_id}.sample_size);
         end
-
-        [features, stats{layer_id}{batch_id}] = forward_pass_batch(features{1}, ...
+        % process a single batch with an AutoCNN
+        [features, stats{layer_id}{batch_id}] = forward_pass_batch(features, ...
             net.layers{layer_id}.filters, net.layers{layer_id});
         % apply feature normalization for each sample
         if (~isempty(net.layers{layer_id}.norm))
             for k=1:numel(features), features{k} = feature_scaling(features{k}, net.layers{layer_id}.norm); end
         end
         if (net.layers{layer_id}.multidict)
-            feature_maps_multi{layer_id}(samples_ids,:) = features{2};
+            fmaps_out_batch(:,sum(feature_length(1:layer_id))+1:sum(feature_length(1:layer_id+1))) = features{2};
+        end
+        features = features{1};
+    end
+    fmaps_out_batch(:,1:feature_length(1)) = features;
+    if (net.layers{1}.multidict)
+        % normalize concatenated features
+        if (~isempty(net.layers{layer_id}.norm))
+            fmaps_out_batch = feature_scaling(fmaps_out_batch, net.layers{layer_id}.norm);
         end
     end
-    fmaps_out(samples_ids,:) = features{1};
     
+    % Dimension reduction (optional)
+    if (isfield(net.layers{layer_id},'PCA_matrix') && ~isempty(net.layers{layer_id}.PCA_matrix))
+        fmaps_out(samples_ids,:) = pca_whiten_wrap(fmaps_out_batch, net.layers{layer_id});
+    else
+        fmaps_out(samples_ids,:) = fmaps_out_batch;
+    end
+        
     time = toc(time);
     if (mod(batch_id,net.layers{layer_id}.progress_print)==0), fprintf('batch %d/%d, %3.3f samples/sec \n', batch_id, n_batches, length(samples_ids)/time); end
 end
 
 clear feature_maps;
 
-% collect feature maps statistics from the training samples
-for layer_id = 1:n_layers
-    if (isfield(net.layers{layer_id},'stats') && ~isempty(net.layers{layer_id}.stats))
-        continue;
-    end
-    fprintf('collecting statistics for layer %d \n', layer_id)
-    means = []; % mean values of all batches
-    stds = []; % std values of all batches
-    lcn_means = []; % LCN weighted standard deviations
-    % filter responses mean, min and max values
-    feat_means = [];
-    feat_mins = [];
-    feat_maxs = [];
-    for batch=1:numel(stats{layer_id}) % collect for batches
-        for group=1:numel(stats{layer_id}{batch}) % collect for groups
-            means(batch,group) = stats{layer_id}{batch}{group}.mn;
-            stds(batch,group) = stats{layer_id}{batch}{group}.sd;
-            lcn_means(batch,group) = stats{layer_id}{batch}{group}.lcn_mn;
-            feat_means(batch,group) = stats{layer_id}{batch}{group}.mean;
-            feat_mins(batch,group) = stats{layer_id}{batch}{group}.min;
-            feat_maxs(batch,group) = stats{layer_id}{batch}{group}.max;
+% collect feature maps statistics if requested
+if (nargout > 1)
+    for layer_id = 1:n_layers
+        if (isfield(net.layers{layer_id},'stats') && ~isempty(net.layers{layer_id}.stats))
+            continue;
         end
-    end
-    stats{layer_id} = struct('mn', mean(means(:)), 'sd', mean(stds(:)), 'lcn_mn', mean(lcn_means),...
-        'feat_mean', mean(feat_means(:)), 'feat_min', mean(feat_mins(:)), 'feat_max', mean(feat_maxs(:)));
-    fprintf('layer %d: mn = %f, sd = %f, lcn_mn = %f \n', layer_id, stats{layer_id}.mn, stats{layer_id}.sd, mean(stats{layer_id}.lcn_mn));
-end
-
-% concatenate features from all layers
-fprintf('concatenating and normalizing multidictionary features \n')
-if (net.layers{1}.multidict)
-    for layer_id=1:numel(net.layers)-1
-        fmaps_out = cat(2,fmaps_out,feature_maps_multi{layer_id});
-    end
-    % normalize concatenated features
-    for batch_id = 1:n_batches
-        samples_ids = max(1,min(n_samples, (batch_id-1)*net.layers{1}.batch_size+1:batch_id*net.layers{1}.batch_size));
-        fmaps_out(samples_ids,:) = feature_scaling(fmaps_out(samples_ids,:), net.layers{end}.norm);
+        fprintf('collecting statistics for layer %d \n', layer_id)
+        means = []; % mean values of all batches
+        stds = []; % std values of all batches
+        lcn_means = []; % LCN weighted standard deviations
+        % filter responses mean, min and max values
+        feat_means = [];
+        feat_mins = [];
+        feat_maxs = [];
+        for batch=1:numel(stats{layer_id}) % collect for batches
+            for group=1:numel(stats{layer_id}{batch}) % collect for groups
+                means(batch,group) = stats{layer_id}{batch}{group}.mn;
+                stds(batch,group) = stats{layer_id}{batch}{group}.sd;
+                lcn_means(batch,group) = stats{layer_id}{batch}{group}.lcn_mn;
+                feat_means(batch,group) = stats{layer_id}{batch}{group}.mean;
+                feat_mins(batch,group) = stats{layer_id}{batch}{group}.min;
+                feat_maxs(batch,group) = stats{layer_id}{batch}{group}.max;
+            end
+        end
+        stats{layer_id} = struct('mn', mean(means(:)), 'sd', mean(stds(:)), 'lcn_mn', mean(lcn_means),...
+            'feat_mean', mean(feat_means(:)), 'feat_min', mean(feat_mins(:)), 'feat_max', mean(feat_maxs(:)));
+        fprintf('layer %d: mn = %f, sd = %f, lcn_mn = %f, feat_mean = %f, feat_min = %f, feat_max = %f \n', ...
+            layer_id, stats{layer_id}.mn, stats{layer_id}.sd, mean(stats{layer_id}.lcn_mn), ...
+            stats{layer_id}.feat_mean, stats{layer_id}.feat_min, stats{layer_id}.feat_max);
+        stats{layer_id}.output_size = stats_size{layer_id}{1}.output_size{1};
     end
 end
 
@@ -184,6 +220,10 @@ sz_fmaps = size(fmaps);
 sz_filters = size(filters);
 if (length(sz_filters) < 5), sz_filters(5) = 1; end; % for generalization
 
+if (opts.n_groups == 1 && opts.flip) % layer 1
+    fmaps = fliplr(fmaps);
+end
+
 % we prefer to do padding here (before feature scaling) instead of in vl_nnconv 
 % For MNIST it is good because image values are zeros on the boundaries and, 
 % therefore, there is no edge effect
@@ -192,7 +232,8 @@ if (any(sz_fmaps(1:2) > sz_filters(1:2)) && opts.is_vl)
     fmaps = padarray(fmaps, opts.conv_pad, 0, 'both'); 
 end
 if (~opts.is_vl)
-    fmaps = padarray(fmaps, opts.filter_size(1:2)-1,0,'post');
+    fmaps = padarray(fmaps, opts.filter_size(1:2) - 1 + opts.conv_pad - ...
+            floor(opts.filter_size(1:2)./2),0,'post');
 end
 % PREPROCESSING
 % treat the entire batch with all feature map groups as a single vector
@@ -206,7 +247,7 @@ end
 if (opts.gpu), fmaps = gpuArray(fmaps); end % send to a GPU in the loop in case of the out of memory exception
 
 if (~opts.is_vl)
-    fmaps = fft2(fmaps);
+    for d=opts.dims, fmaps = fft(fmaps,[],d); end
 end
 
 fmaps_out = cell(2,opts.n_groups);
@@ -231,7 +272,11 @@ for group=1:opts.n_groups
     if (strcmpi(opts.rectifier,'abs'))
         fmaps_out{1,group} = abs(fmaps_out{1,group});
     elseif (strcmpi(opts.rectifier,'relu'))
-        fmaps_out{1,group} = vl_nnrelu(real(fmaps_out{1,group}), [], 'leak', opts.rectifier_leak);
+        if (opts.is_vl)
+            fmaps_out{1,group} = vl_nnrelu(real(fmaps_out{1,group}), [], 'leak', opts.rectifier_leak);
+        else
+            fmaps_out{1,group} = real(fmaps_out{1,group}); % leak is ignored
+        end
     elseif (strcmpi(opts.rectifier,'logistic'))
         k = 0.4;
         fmaps_out{1,group} = 1./(1+exp(-k.*real(fmaps_out{1,group})));
@@ -246,12 +291,13 @@ for group=1:opts.n_groups
         stats{group}.mean = gather(mean(fmaps_out{1,group}(:)));
     end
     
+    % Actual ReLU is here
     fmaps_out{1,group} = max(opts.rectifier_param(1), min(opts.rectifier_param(2), fmaps_out{1,group}));
     % the first cell {1,group} is the features that will be passed to the next layers
-    % the second cell {2,group} is the features that will be passed to a classifier (or PCA)
-
+    
     % POOLING with larger pooling size for the multidictionary features forward passed directly to a classifier
     if (opts.multidict)
+        % the second cell {2,group} is the features that will be passed to a classifier (or PCA)
         pool_size = opts.pool_size;
         opts.pool_size = opts.pool_size_multidict;
         if (opts.pruned)
@@ -281,18 +327,18 @@ for group=1:opts.n_groups
     else
         stats{group}.lcn_mn = nan;
     end
-
     % POOLING (regular)
     fmaps_out{1,group} = pool_wrap(fmaps_out{1,group}, opts); 
-    
 end
-
 % Concatenate all groups
 for k=1:size(fmaps_out,1)
     fmaps_out{k,1} = cat(3,fmaps_out{k,:}); % 4d array: rows x cols x sz_filters(4)*opts.n_groups x n_samples
 end
 fmaps_out = fmaps_out(:,1);
 fmaps_out(cellfun(@isempty,fmaps_out)) = [];
+if (isempty(opts.stats))
+    stats{1}.output_size = cellfun(@size,fmaps_out,'UniformOutput',false);
+end
 % reshape features back to vectors
 for k=1:size(fmaps_out,1)
     if (opts.gpu), fmaps_out{k,1} = gather(fmaps_out{k,1});  end
@@ -310,7 +356,8 @@ if (opts.is_vl)
     fmaps = vl_nnconv(fmaps, filters, [], 'stride', opts.conv_stride);
 else
     % using Matlab in the frequency domain
-    fmaps = ifft2(bsxfun(@times, permute(fmaps,[1:3,5,4]), filters));
+    fmaps = bsxfun(@times, permute(fmaps,[1:3,5,4]), filters);
+    for d=opts.dims, fmaps = ifft(fmaps,[],d); end
     sz = size(fmaps);
     offset = floor((sz(1:2) - opts.sample_size(1:2))./2);
     fmaps = squeeze(sum(fmaps(offset+1:end-offset,offset+1:end-offset,:,:,:),3));
@@ -325,6 +372,9 @@ if (opts.pool_size <= 1)
 end
 if (isfield('opts','pool_fn') && ~isempty(opts.pool_fn))
     fmaps = opts.pool_fn(fmaps, opts); % can be some custom pooling function
+elseif (~opts.is_vl)
+    opts.pool_op = @(input) max(max(input,[],1),[],2);
+    fmaps = squeeze(pool_disjoint(fmaps, opts, 0));
 else
     fmaps = vl_nnpool(fmaps, opts.pool_size, 'stride', opts.pool_size, 'method', opts.pool_op);
 end
@@ -360,12 +410,37 @@ end
 
 end
 
+% PCA + whitening
+function features = pca_whiten_wrap(features, opts)
+opts.verbose = false;
+opts.pca_mode = 'pcawhiten';
+if (iscell(opts.PCA_matrix))
+    sz = [opts.sample_size(1:2)./opts.pool_size, opts.n_filters, opts.n_groups];
+    features_reshaped = reshape(features(:,1:prod(sz)), [size(features,1), sz]);
+    features_split = cell(1,opts.n_groups);
+    for group = 1:opts.n_groups
+        features_split{group} = ...
+            pca_zca_whiten(reshape(features_reshaped(:,:,:,:,group), [size(features_reshaped,1), ...
+            prod(sz(1:2))*opts.n_filters]), opts, opts.PCA_matrix{group}, opts.data_mean{group}, opts.L_regul{group});
+    end
+    % normalize features, concatenate with lower layer features
+    features_split = feature_scaling(cat(2,features_split{:}), 'stat');
+    features = feature_scaling(cat(2,features_split,feature_scaling(features(:,prod(sz)+1:end),'stat')), 'stat');
+else
+    features = pca_zca_whiten(features, opts, opts.PCA_matrix, opts.data_mean, opts.L_regul);
+end
+
+end
+
 function opts = set_default_values(opts)
 if (~isfield(opts,'progress_print'))
     opts.progress_print = 10; % print statistics every 10th batch
 end
 if (~isfield(opts,'is_vl'))
-    opts.is_vl = false; % true to use Matconvnet, otherwise use Matlab implementation
+    % true to use Matconvnet (faster, about 4-6 times in my case), otherwise use Matlab implementation
+    % although, with Matlab implementation I consistently get slightly better classification accuracy
+    % due to some GPU issue, changing this option can cause a GPU error
+    opts.is_vl = true; 
 end
 if (~isfield(opts,'conv_stride'))
     opts.conv_stride = 1; % convolution stride
@@ -396,6 +471,9 @@ if (opts.multidict)
 end
 if (~isfield(opts,'stats'))
     opts.stats = []; % statistical data of batches
+end
+if (~isfield(opts,'flip'))
+    opts.flip = false; % true to flip input images horizontally
 end
 
 end
