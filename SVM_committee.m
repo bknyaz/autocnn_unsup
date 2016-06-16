@@ -13,7 +13,7 @@ kernel = 2; % RBF SVM
 % check labels
 train_labels = double(train_labels(1:size(train_data,1)));
 test_labels = double(test_labels(1:size(test_data,1)));
-% make sure labels are from 0 to n_classes
+% make sure that labels are in the range [0,n_classes]
 train_labels = train_labels-min(train_labels); 
 test_labels = test_labels-min(test_labels);
 labels = unique(train_labels)';
