@@ -45,9 +45,12 @@ else
         dim_str = num2str(size(data,2));
     end
 end
+if (~isfield(opts,'verbose'))
+    opts.verbose = true;
+end
 [m,n] = size(data);
 if (projection)
-    fprintf('-> %s: projection %dx%d -> %dx%d \n', opts.pca_mode, m, n, m, dim); 
+    if (opts.verbose), fprintf('-> %s: projection %dx%d -> %dx%d \n', opts.pca_mode, m, n, m, dim); end
     data = bsxfun(@minus, data, data_mean);
 else
     if (~isfield(opts,'pca_fast'))
@@ -65,7 +68,7 @@ else
     if (opts.pca_fast)
         str = ' (randomized)';
     end
-    fprintf('-> performing%s %s: %dx%d -> %dx%s \n', str, opts.pca_mode, m, n, m, dim_str); 
+    if (opts.verbose), fprintf('-> performing%s %s: %dx%d -> %dx%s \n', str, opts.pca_mode, m, n, m, dim_str); end
     
     data_mean = mean(data);
     data = bsxfun(@minus, data, data_mean);
@@ -107,7 +110,10 @@ else
         if (isempty(dim))
             dim = n;
         end
-        fprintf('pca_dim (the number of PCA dimensionalities, %3.2f %% of data variance is preserved): %d \n', pca_fraction*100, dim)
+        if (opts.verbose)
+            fprintf('pca_dim (the number of PCA dimensionalities, %3.2f %% of data variance is preserved): %d \n', ...
+                pca_fraction*100, dim)
+        end
     end
     PCA_matrix = evectors(:,1:dim);
     clear evectors;
@@ -115,7 +121,7 @@ else
         if (~isfield(opts,'pca_epsilon') || isempty(opts.pca_epsilon))
             opts.pca_epsilon = 1e-5;
         end
-        fprintf('whitening with regul = %1.3e \n', opts.pca_epsilon)
+        if (opts.verbose), fprintf('whitening with regul = %1.3e \n', opts.pca_epsilon); end
         L_regul = diag(1./(evalues(1:dim)+opts.pca_epsilon));
     end
         
