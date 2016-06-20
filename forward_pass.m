@@ -136,8 +136,7 @@ for batch_id = 1:n_batches
             features = local_fmaps_norm(features, net.layers{layer_id}.sample_size);
         end
         % process a single batch with an AutoCNN
-        [features, stats{layer_id}{batch_id}] = forward_pass_batch(features, ...
-            net.layers{layer_id}.filters, net.layers{layer_id});
+        [features, stats{layer_id}{batch_id}] = forward_pass_batch(features, net.layers{layer_id}.filters, net.layers{layer_id});
         % apply feature normalization for each sample
         if (~isempty(net.layers{layer_id}.norm))
             for k=1:numel(features), features{k} = feature_scaling(features{k}, net.layers{layer_id}.norm); end
@@ -373,12 +372,33 @@ end
 if (isfield('opts','pool_fn') && ~isempty(opts.pool_fn))
     fmaps = opts.pool_fn(fmaps, opts); % can be some custom pooling function
 elseif (~opts.is_vl)
-    opts.pool_op = @(input) max(max(input,[],1),[],2);
-    fmaps = squeeze(pool_disjoint(fmaps, opts, 0));
+    fmaps = pool_disjoint(fmaps, opts.pool_size, opts.pool_op);
 else
     fmaps = vl_nnpool(fmaps, opts.pool_size, 'stride', opts.pool_size, 'method', opts.pool_op);
 end
 
+end
+
+% Pooling from squared disjoint regions within a feature map
+function fmaps = pool_disjoint(fmaps, pool_size, method)
+if (ischar(method))
+    if (strcmpi(method,'max'))
+        pool_op = @(input) max(max(input,[],1),[],2);
+    elseif (strcmpi(method,'avg'))
+        pool_op = @(input) mean(mean(input,1),2);
+    else
+        error('not supported pooling method')
+    end
+else
+    pool_op = method;
+end
+for c=1:size(fmaps,2)/pool_size
+    for r=1:size(fmaps,1)/pool_size
+        fmaps(pool_size*(r-1)+1,pool_size*(c-1)+1,:,:) = ...
+            pool_op(fmaps(pool_size*(r-1)+1:pool_size*r,pool_size*(c-1)+1:pool_size*c,:,:));
+    end
+end
+fmaps = fmaps(1:pool_size:end,1:pool_size:end,:,:);
 end
 
 % Normalizes feature maps (for MNIST)
