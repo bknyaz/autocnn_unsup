@@ -40,6 +40,7 @@ end
 if (~isfield(opts,'arch'))
     opts.arch = '1024c13-2p-conv0_4__128g-4ch-160c11-4p-conv2_3'; % define a large 2 layer architecture
 end
+sample_size = [32,32,3];
 opts.net_init_fn = @() net_init(opts.arch, opts, 'sample_size', sample_size, varargin{:});
 rootFolder = fileparts(mfilename('fullpath'));
 if (~isfield(opts,'dataDir'))
@@ -49,6 +50,7 @@ if (~exist(opts.dataDir,'dir'))
     mkdir(opts.dataDir)
 end
 fprintf('loading and preprocessing data \n')
+opts.sample_size = sample_size;
 [data_train, data_test] = load_CIFAR_data(opts);
 opts.dataset = 'cifar10';
 
