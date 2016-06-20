@@ -7,7 +7,7 @@ function connections = learn_connections_unsup(feature_maps, opts)
 % opts - a structure with parameters of layer l+1
 % connections - a binary connection matrix with opts.n_groups rows and N_filters_l columns
 
-if (opts.n_groups*opts.filter_size(3) == opts.sample_size(end))
+if (opts.n_groups == 1 || (opts.n_groups*opts.filter_size(3) == opts.sample_size(end) && opts.connections_complete))
     % create simple sequential connections in case of a complete connection scheme
     connections = reshape(1:opts.sample_size(end),opts.filter_size(3),opts.n_groups)';
     fprintf('complete connection scheme is applied \n')
