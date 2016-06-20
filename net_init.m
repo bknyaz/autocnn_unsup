@@ -17,6 +17,9 @@ for layer_id=1:numel(net.layers)
     % size of inputs to layer 1
     if (layer_id == 1)
         net.layers{layer_id}.sample_size = find_value(varargin, 'sample_size', layer_id, []);
+        if (length(net.layers{layer_id}.sample_size) == 3)
+            net.layers{layer_id}.sample_size = [net.layers{layer_id}.sample_size(1:2),1,net.layers{layer_id}.sample_size(3)];
+        end
         net.layers{layer_id}.filter_size(3) = net.layers{layer_id}.sample_size(end);
     end
     
@@ -40,6 +43,7 @@ for layer_id=1:numel(net.layers)
     net.layers{layer_id}.norm_type = layer_id; % method to normalize autoconvolutional responses
     if (layer_id > 1)
         net.layers{layer_id}.shared_filters = find_value(varargin, 'shared_filters', layer_id, true);
+        net.layers{layer_id}.connections_complete = find_value(varargin, 'connections_complete', layer_id, false);
     end
     
     % Turn local contrast normalization on/off
@@ -55,9 +59,11 @@ for layer_id=1:numel(net.layers)
     net.layers{layer_id}.conv_pad = find_value(varargin, 'conv_pad', layer_id, floor(net.layers{layer_id}.filter_size(1:2)./2));
     
     % use features from all layers
-    net.layers{layer_id}.multidict = find_value(varargin, 'multidict', layer_id, true);
+    if (numel(net.layers) > 1)
+        net.layers{layer_id}.multidict = find_value(varargin, 'multidict', layer_id, true);
+    end
     
-    if (net.layers{layer_id}.multidict && layer_id < numel(net.layers))
+    if (layer_id < numel(net.layers) && net.layers{layer_id}.multidict)
         pool_size_multidict = 1;
         for l=layer_id:numel(net.layers)
             pool_size_multidict = pool_size_multidict*net.layers{l}.pool_size;
@@ -127,7 +133,10 @@ function value = find_value(pairs, query, layer_id, default_value)
 value = default_value;
 
 for p=1:numel(pairs)
-    if (ischar(pairs{p}) && strcmpi(pairs{p},query))
+    if (isstruct(pairs{p}) && isfield(pairs{p},query))
+        value = pairs{p}.(query);
+        break;
+    elseif (ischar(pairs{p}) && strcmpi(pairs{p},query))
         value = pairs{p+1};
         break;
     end
