@@ -66,9 +66,9 @@ if (~isfield(opts,'patches_norm'))
     fprintf('patches_norm: \t\t ''%s'' \n', opts.patches_norm)
 end
 
-if (~isfield(opts,'whiten'))
-    opts.whiten = true; % true to whiten patches before learning
-    fprintf('whiten: \t\t %d \n', opts.whiten)
+if (~isfield(opts,'filters_whiten'))
+    opts.filters_whiten = true; % true to whiten patches before learning
+    fprintf('filters_whiten: \t\t %d \n', opts.filters_whiten)
 end
 if (~isfield(opts,'whiten_independ'))
     opts.whiten_independ = false; % true to whiten patches before learning independently for each autoconvolution order
@@ -187,7 +187,7 @@ for group = 1:size(patches,2)
             fprintf('-> %s-normalization of patches \n', opts.patches_norm);
             patches{n,group} = feature_scaling(patches{n,group}, opts.patches_norm);
         end
-        if (opts.whiten)
+        if (opts.filters_whiten)
             if (opts.whiten_independ)
                 opts.pca_fraction = pca_fractions(opts.conv_orders(n)+1); 
             else
@@ -319,6 +319,7 @@ elseif (~isempty(strfind(opts.learning_method,'kmeans')))
         % this can be very slow, however, we can enjoy various distance measures
         opts_k = statset('kmeans');
         opts_k.UseParallel = true;
+        parpool(4)
         [ids,filters,sumd,D]  = kmeans(data, opts.n_filters,'Distance','cosine','Replicates',4,'MaxIter',200,'Display','final','Options',opts_k);
         delete(gcp)
     else
