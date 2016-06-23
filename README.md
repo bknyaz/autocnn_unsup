@@ -41,7 +41,7 @@ Model | CIFAR-10 (400), single SVM / committee | CIFAR-10, single SVM / committe
 Approximate total (training+prediction) time for 1 test. We also report prediction time (required to process and classifty all 10k test samples, flipping is not applied for test samples), which is more relevant in practice. 
 
 Model | CIFAR-10 (400), single SVM / committee | CIFAR-10, single SVM / committee | CIFAR-10 (prediction), single SVM / committee
--------|:--------:|:--------:
+-------|:--------:|:--------:|:--------:
 1024c13 | **3 min / 3.5 min** | **4.5 min / 15 min** | 9 sec / 18 min
 1024c13+flip | **3 min** / 4 min | 6 min / 25 min | 9 sec / 25 sec
 420c13-128g-160c11 | 15 min / 15.5 min | 30 min / 45 min | 3.1 min / 3.4 min
