@@ -28,20 +28,27 @@ unlabeled_ids = 1:size(data_train.unlabeled_images,1);
 unlabeled_ids = unlabeled_ids(randperm(length(unlabeled_ids)));
 data_train.unlabeled_images = data_train.unlabeled_images(unlabeled_ids,:);
 data_train.unlabeled_images_whitened = data_train.unlabeled_images_whitened(unlabeled_ids,:);
-% data_train.unlabeled_images = data_train.unlabeled_images(train_ids,:);
-% data_train.unlabeled_images_whitened = data_train.images;
 
 fprintf('dataset %s: \n', upper('statistics'))
 fprintf('training id min = %d, max = %d \n', min(train_ids), max(train_ids))
 print_data_stats(data_train, data_test);
 
 %% Learn filters and connections
+for layer_id=1:numel(net.layers), net.layers{layer_id}.stats = []; net.layers{layer_id}.PCA_matrix = []; end
 train_features = data_train.unlabeled_images; % use non whitened images to learn filters
 for layer_id=1:numel(net.layers)
-    fprintf('\nlearning %s from layer %d to layer %d \n', upper('connections'), layer_id-1, layer_id)
-    net.layers{layer_id}.connections = learn_connections_unsup(train_features, net.layers{layer_id});
-    fprintf('learning %s for layer %d\n', upper('filters'), layer_id)
-    net.layers{layer_id}.filters = learn_filters_unsup(train_features, net.layers{layer_id});
+    if (~isfield(net.layers{layer_id},'connections') || isempty(net.layers{layer_id}.connections))
+        fprintf('\nlearning %s from layer %d to layer %d \n', upper('connections'), layer_id-1, layer_id)
+        net.layers{layer_id}.connections = learn_connections_unsup(train_features, net.layers{layer_id});
+    else
+        warning('learning connections from layer %d to layer %d is skipped ', layer_id-1, layer_id)
+    end
+    if (~isfield(net.layers{layer_id},'filters') || isempty(net.layers{layer_id}.filters))
+        fprintf('learning %s for layer %d\n', upper('filters'), layer_id)
+        net.layers{layer_id}.filters = learn_filters_unsup(train_features, net.layers{layer_id});
+    else
+        warning('learning filters for layer %d is skipped ', layer_id)
+    end
     if (layer_id < numel(net.layers))
         fprintf('obtaining %s of layer %d \n', upper('feature maps'), layer_id)
         if (layer_id == 1)
@@ -66,7 +73,7 @@ opts.PCA_dim(opts.PCA_dim > size(train_features,2)) = [];
 opts.norm = 'stat';
 opts.pca_mode = 'pcawhiten';
 opts.pca_fast = true;
-n_max_pca = 2*10^5;
+n_max_pca = 7*10^5; % depends on RAM and the number of unlabeled samples
 if (size(train_features,2) > n_max_pca)
     fprintf('\n-> %s for groups of feature maps \n', upper('dimension reduction'))
     % perform PCA for the last layer feature map groups independently
@@ -107,7 +114,7 @@ for layer_id=1:numel(stats), net.layers{layer_id}.stats = stats{layer_id}; end
 n = min(size(data_train.unlabeled_images_whitened,1),size(data_train.images,1));
 if (norm(data_train.unlabeled_images_whitened(1:n,:) - data_train.images(1:n,:)) > 1e-10)
     fprintf('\n-> processing %s samples \n', upper('training'))
-    [train_features, stats] = forward_pass(data_train.images, net);
+    train_features = forward_pass(data_train.images, net);
 elseif (size(data_train.images,1) > size(data_train.unlabeled_images_whitened,1))
     fprintf('\n-> processing the rest of %s samples \n', upper('training'))
     train_features = cat(1,train_features,forward_pass(data_train.images(n+1:end,:), net));
