@@ -9,7 +9,7 @@ function [filters, params] = learn_filters_unsup(feature_maps, opts)
 % filter depth (number of channels) is defined by opts.connections (if not specified, equals opts.sample_size(end))
 % params - an array of cells (one cell per group) with vectors of the joint spatial and temporal resolutions for each filter
 %
-% Currently, the only supported methods are kmeans, kmedoids and GMM
+% Currently, the supported learning methods are k-means, convolutional k-means, kmedoids and GMM
 % It's highly recommended to install VlFeat (http://www.vlfeat.org/) beforehand, 
 % because it tends to be much faster than Matlab implementations
 
@@ -68,7 +68,7 @@ end
 
 if (~isfield(opts,'filters_whiten'))
     opts.filters_whiten = true; % true to whiten patches before learning
-    fprintf('filters_whiten: \t\t %d \n', opts.filters_whiten)
+    fprintf('filters_whiten: \t %d \n', opts.filters_whiten)
 end
 if (~isfield(opts,'whiten_independ'))
     opts.whiten_independ = false; % true to whiten patches before learning independently for each autoconvolution order
@@ -92,6 +92,10 @@ if (strcmpi(opts.learning_method,'kmeans'))
         opts.kmeans_algorithm = 'ELKAN'; % 'ANN' or 'ELKAN'
         fprintf('kmeans_algorithm: \t ''%s'' \n', opts.kmeans_algorithm)
     end
+elseif (strcmpi(opts.learning_method,'conv_kmeans'))
+    opts.crop_size = min(opts.sample_size(1), 2.*opts.crop_size); % for convolutional k-means extract two times larger patches
+    opts.conv_kmeans_coef = opts.crop_size(1)/opts.filter_size(1); % 2 by default
+    opts.filter_size = min(opts.sample_size(1), 2.*opts.filter_size); % temporary assign this value
 end
 
 if (~isfield(opts,'batch_size'))
@@ -176,11 +180,11 @@ else
     end
     patches = patches(1,:);
 end
-% patches normalization and whitening
 for group = 1:size(patches,2)
+    % patches normalization and whitening
     for n=1:size(patches,1)
         sz = size(patches{n,group});
-        fprintf('%d patches are extracted \n', sz(4));
+        fprintf('group %d/%d: %d patches are extracted \n', group, size(patches,2), sz(4));
         patches{n,group} = reshape(real(patches{n,group}),[prod(sz(1:3)),sz(4)])';
         if (~isempty(opts.patches_norm))
             % important before whitening
@@ -205,12 +209,17 @@ for group = 1:size(patches,2)
         patches_all = pca_zca_whiten(patches_all, opts);
     end
     
+    % normalization before clustering leads to more uniform clusters and better looking filters
+    % but surprisingly, hurts classification accuracy
+    % patches_all = feature_scaling(patches_all, 'l2'); 
+    
     % learn filters (k-means, k-medoids, ICA, etc.) for the current group
-%     patches_all = feature_scaling(patches_all, 'l2'); % normalization before clustering leads
-    % to more uniform clusters and better looking filters, but surprisingly, hurts classification accuracy
     filters_clusters = learn_filters(patches_all, opts);
     filters_clusters = feature_scaling(filters_clusters, 'l2'); % normalize for better usage as convolution kernels
     
+    if (strcmpi(opts.learning_method,'conv_kmeans'))
+        sz(1:2) = sz(1:2)./opts.conv_kmeans_coef;
+    end
     % estimate the joint spatial and frequency resolution
     filters{group} = permute(reshape(filters_clusters,[size(filters_clusters,1),sz(1:3)]), [2:4,1]);
     params{group} = cell2mat(estimate_params(filters{group}));
@@ -310,6 +319,9 @@ elseif (strcmpi(opts.learning_method,'kmedoids'))
     opts_k.MaxIter = 200;
     [ids,~,~,~,cluster_ids] = kmedoids(data, opts.n_filters, 'Options', opts_k, 'Distance', 'cosine', 'Replicates',4);
     filters = data(cluster_ids,:);
+elseif (strcmpi(opts.learning_method,'conv_kmeans'))
+    [filters, ids] = conv_kmeans(data', opts.n_filters, opts.filter_size, opts.conv_kmeans_coef, 256, 20, false);
+    filters = filters';
 elseif (~isempty(strfind(opts.learning_method,'kmeans')))
     if (strcmpi(opts.learning_method,'kmeans'))
         [filters,ids,energy] = vl_kmeans(data', opts.n_filters, 'Algorithm', opts.kmeans_algorithm,'Distance','l2',...
