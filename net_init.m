@@ -1,7 +1,7 @@
 function net = net_init(arch, varargin)
 % Initializes the network and its parameters
 % Example usage:
-% net = net_init('1024c13-2p-conv0_4__128g-4ch-160c11-4p-conv2_3', 'sample_size', [32,32,1,3], 'batch_size', 128)
+% net = net_init('1024c13-2p-conv0_4__128g-4ch-160c11-4p-conv2_3', 'sample_size', [32,32,3], 'batch_size', 128)
 % varargin{1} can be a structure with parameters which are added to each layer
 % varargin can contain pairs <'field_name', value>, which override values in varargin{1}
 % sample_size is a mandatory field
@@ -25,6 +25,9 @@ for layer_id=1:numel(net.layers)
     
     % filter response normalization
     net.layers{layer_id}.norm = find_value(varargin, 'conv_norm', layer_id, 'stat');
+    if (isfield(net.layers{layer_id},'conv_norm'))
+        net.layers{layer_id} = rmfield(net.layers{layer_id}, 'conv_norm');
+    end
     
     % number of samples in a batchs (same for all layers)
     if (layer_id == 1)
@@ -61,6 +64,9 @@ for layer_id=1:numel(net.layers)
     % use features from all layers
     if (numel(net.layers) > 1)
         net.layers{layer_id}.multidict = find_value(varargin, 'multidict', layer_id, true);
+        if (layer_id > 1)
+            net.layers{layer_id}.pruned = false;
+        end
     end
     
     if (layer_id < numel(net.layers) && net.layers{layer_id}.multidict)
@@ -135,7 +141,7 @@ value = default_value;
 for p=1:numel(pairs)
     if (isstruct(pairs{p}) && isfield(pairs{p},query))
         value = pairs{p}.(query);
-        break;
+        % no break here
     elseif (ischar(pairs{p}) && strcmpi(pairs{p},query))
         value = pairs{p+1};
         break;
