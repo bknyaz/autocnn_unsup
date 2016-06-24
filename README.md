@@ -4,15 +4,6 @@ Matlab scripts implementing the model from our work [`Autoconvolution for Unsupe
 Currently, we present the scripts only for CIFAR-10. You can run the main demo script [autocnn_cifar10.m] (autocnn_cifar10.m). Our slighly optimized scripts are much faster (see Tables below) than those used to produce results in the paper. Moreover, the classification results are also surprisingly improved.
 The updated results and timings, and the scripts for other datasets (MNIST, STL-10) will be uploaded.
 
-## Example of running
-opts.matconvnet = 'home/code/3rd_party/matconvnet';
-opts.vlfeat = 'home/code/3rd_party/vlfeat/toolbox/mex/mexa64';
-opts.gtsvm = '/home/code/3rd_party/gtsvm/mex';
-opts.n_folds = 10;
-opts.n_train = 4000;
-opts.arch = '1024c13-2p-conv0_4__128g-4ch-160c11-4p-conv2_3';
-autocnn_cifar10(opts, 'augment', true)
-
 ## Requirements
 For faster filters learning it's recommended to use [VLFeat] (http://www.vlfeat.org/), and for faster forward pass - [MatConvNet] (http://www.vlfeat.org/matconvnet/). Although, in the scripts we try to make it possible to choose between built-in Matlab and third party implementations.
 
