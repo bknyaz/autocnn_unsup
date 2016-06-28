@@ -12,7 +12,7 @@ kernel = 2; % RBF SVM
 
 % check labels
 train_labels = double(train_labels(1:size(train_data,1)));
-test_labels = double(test_labels(1:size(test_data,1)));
+test_labels = double(test_labels);
 % make sure that labels are in the range [0,n_classes]
 train_labels = train_labels-min(train_labels); 
 test_labels = test_labels-min(test_labels);
@@ -39,6 +39,14 @@ else
     % convert to double
     train_data = double(train_data);
     test_data = double(test_data);
+    test_labels_tmp = test_labels;
+    if (size(test_data,1) ~= length(test_labels))
+        if (size(test_data,1) == 2*length(test_labels))
+            test_labels_tmp = repmat(test_labels,2,1); % in case of simple data augmentation (flip)
+        else
+            error('not supported mode')
+        end
+    end
 end
 
 time_train = 0;
@@ -66,27 +74,34 @@ for j=1:J
     fprintf('predicting...')
     test_data_dim = feature_scaling(test_data(:,1:p_j), opts.norm);
     if (strcmpi(opts.classifier,'libsvm'))
-        [predicted_labels{j}, accuracy, scores{j}] = svmpredict(test_labels, test_data_dim, model);
+        [predicted_labels{j}, accuracy, scores{j}] = svmpredict(test_labels_tmp, test_data_dim, model);
+        if (length(predicted_labels{j}) == 2*length(test_labels))
+            scores{j} = mean(cat(3,scores{j}(1:end/2,:),scores{j}(end/2+1:end,:)),3);
+            [predicted_labels{j}, ~, accuracy] = predict_labels(scores{j}, labels, test_labels, n_classes, strcmpi(opts.classifier,'libsvm'));
+        end
         acc(1,j) = accuracy(1);
     else
         if (strcmpi(opts.classifier,'gtsvm'))
             scores{j} = context.classify(test_data_dim);
-            [~,predicted_labels{j}] = max(scores{j},[],2);
         else
-            [predicted_labels{j}, scores{j}] = predict(model, test_data_dim);
+            [~, scores{j}] = predict(model, test_data_dim);
         end
+        if (size(scores{j},1) == 2*length(test_labels))
+            scores{j} = mean(cat(3,scores{j}(1:end/2,:),scores{j}(end/2+1:end,:)),3);
+        end
+        [~,predicted_labels{j}] = max(scores{j},[],2);
         predicted_labels{j} = predicted_labels{j}-min(predicted_labels{j});
-        acc(1,j) = (1-nnz(predicted_labels{j} ~= test_labels)/length(predicted_labels{j}))*100;
+        acc(1,j) = nnz(predicted_labels{j} == test_labels)/length(predicted_labels{j})*100;
         fprintf('\n')
     end
     scores{j} = single(scores{j});
     predicted_labels{j} = single(predicted_labels{j});
     % predict labels using the committee of SVM scores (average or sum scores and take maximum)
-    [~, ~, acc(2,j)] = predict_labels(mean(cat(3,scores{1:j}),3), labels, test_labels, n_classes, strcmpi(opts.classifier,'libsvm'));
+    [predicted_labels_c, ~, acc(2,j)] = predict_labels(mean(cat(3,scores{1:j}),3), labels, test_labels, n_classes, strcmpi(opts.classifier,'libsvm'));
     time_test = time_test+toc;
     
-    fprintf('- Accuracy of a single classifier model = %f \n', acc(1,j))
-    fprintf('- Accuracy of a committee of %d classifier model(s)  = %f \n', j, acc(2,j));
+    fprintf('- Accuracy of a single classifier model = %f (%d/%d)\n', acc(1,j), nnz(predicted_labels{j} == test_labels), length(test_labels))
+    fprintf('- Accuracy of a committee of %d classifier model(s)  = %f (%d/%d)\n', j, acc(2,j), nnz(predicted_labels_c == test_labels), length(test_labels));
 end
 
 % clean GTSVM resources

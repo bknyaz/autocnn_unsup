@@ -127,6 +127,8 @@ if (net.layers{1}.augment)
     net.layers{1}.flip = true;
     train_features = cat(1,train_features,forward_pass(data_train.images, net));
     train_labels = repmat(data_train.labels,2,1);
+    fprintf('\n-> processing %s samples \n', upper('test (augmented)'))
+    test_features = cat(1,test_features,forward_pass(data_test.images, net));
 else
     train_labels = data_train.labels;
 end
@@ -142,11 +144,7 @@ if (size(train_features,2) > max(opts.PCA_dim))
 end
 
 %% Classification
-if (strcmpi(opts.classifier,'lda'))
-    fprintf('\n-> %s with LDAs \n', upper('classification'))
-else
-    fprintf('\n-> %s with SVMs \n', upper('classification'))
-end
+fprintf('\n-> %s with %s \n', upper('classification'), upper(opts.classifier));
 [test_results.acc, test_results.scores, test_results.predicted_labels] = ...
     classifier_committee(train_features, test_features, train_labels, data_test.labels, opts);
 test_results.net = net;
