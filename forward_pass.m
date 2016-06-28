@@ -114,11 +114,7 @@ for layer_id = 1:n_layers
 end
 
 % Dimension reduction (optional)
-if (isfield(net.layers{layer_id},'PCA_matrix') && ~isempty(net.layers{layer_id}.PCA_matrix))
-    features = pca_whiten_wrap(cat(2,features{1},fmaps_out_multi{:}), net.layers{layer_id});
-else
-    features = cat(2,features{1},fmaps_out_multi{:});
-end
+features = pca_whiten_wrap(cat(2,features{1},fmaps_out_multi{:}), net.layers{layer_id});
     
 fmaps_out = zeros(n_samples, size(features,2), 'single');
 fprintf('-> (multidict) feature maps: %dx%d (%s) \n', size(fmaps_out), class(fmaps_out))
@@ -129,10 +125,7 @@ for batch_id = 1:n_batches
     samples_ids = max(1,min(n_samples, (batch_id-1)*net.layers{1}.batch_size+1:batch_id*net.layers{1}.batch_size));
     features = feature_maps(samples_ids,:);
     fmaps_out_batch = zeros(length(samples_ids),sum(feature_length),'single');
-    if (net.layers{1}.gpu)
-        features = gpuArray(features);
-        fmaps_out_batch = gpuArray(fmaps_out_batch);
-    end
+    if (net.layers{1}.gpu), features = gpuArray(features); end
     
     for layer_id = 1:n_layers
         
@@ -147,11 +140,11 @@ for batch_id = 1:n_batches
             for k=1:numel(features), features{k} = feature_scaling(features{k}, net.layers{layer_id}.norm); end
         end
         if (net.layers{layer_id}.multidict)
-            fmaps_out_batch(:,sum(feature_length(1:layer_id))+1:sum(feature_length(1:layer_id+1))) = features{2};
+            fmaps_out_batch(:,sum(feature_length(1:layer_id))+1:sum(feature_length(1:layer_id+1))) = gather(features{2});
         end
         features = features{1};
     end
-    fmaps_out_batch(:,1:feature_length(1)) = features;
+    fmaps_out_batch(:,1:feature_length(1)) = gather(features);
     if (net.layers{1}.multidict)
         % normalize concatenated features
         if (~isempty(net.layers{layer_id}.norm))
@@ -160,11 +153,7 @@ for batch_id = 1:n_batches
     end
     
     % Dimension reduction (optional)
-    if (isfield(net.layers{layer_id},'PCA_matrix') && ~isempty(net.layers{layer_id}.PCA_matrix))
-        fmaps_out(samples_ids,:) = pca_whiten_wrap(gather(fmaps_out_batch), net.layers{layer_id});
-    else
-        fmaps_out(samples_ids,:) = gather(fmaps_out_batch);
-    end
+    fmaps_out(samples_ids,:) = pca_whiten_wrap(fmaps_out_batch, net.layers{layer_id});
         
     time = toc(time);
     if (mod(batch_id,net.layers{layer_id}.progress_print)==0), fprintf('batch %d/%d, %3.3f samples/sec \n', batch_id, n_batches, length(samples_ids)/time); end
@@ -268,74 +257,73 @@ for group=1:opts.n_groups
     % CONVOLUTION
     fmaps_out{1,group} = conv_wrap(fmaps(:,:,opts.connections(group,:),:), filters(:,:,:,:,min(group,sz_filters(5))), opts);
     % fmaps_out{group} is a 4d array: rows x cols x sz_filters(4) x n_samples
+
+    % RECTIFICATION
+    if (strcmpi(opts.rectifier,'abs'))
+        fmaps_out{1,group} = abs(fmaps_out{1,group});
+    elseif (strcmpi(opts.rectifier,'relu'))
+        if (opts.is_vl)
+            fmaps_out{1,group} = vl_nnrelu(real(fmaps_out{1,group}), [], 'leak', opts.rectifier_leak);
+        else
+            fmaps_out{1,group} = real(fmaps_out{1,group}); % leak is ignored
+        end
+    elseif (strcmpi(opts.rectifier,'logistic'))
+        k = 0.4;
+        fmaps_out{1,group} = 1./(1+exp(-k.*real(fmaps_out{1,group})));
+    else
+        error('not supported rectifier type')
+    end
+
+    if (isempty(opts.stats))
+        stats{group} = stats{1};
+        stats{group}.max = gather(max(fmaps_out{1,group}(:)));
+        stats{group}.min = gather(min(fmaps_out{1,group}(:)));
+        stats{group}.mean = gather(mean(fmaps_out{1,group}(:)));
+    end
+
+    % Actual ReLU is here
+    fmaps_out{1,group} = max(opts.rectifier_param(1), min(opts.rectifier_param(2), fmaps_out{1,group}));
+    % the first cell {1,group} is the features that will be passed to the next layers
+
+    % POOLING with larger pooling size for the multidictionary features forward passed directly to a classifier
+    if (opts.multidict)
+        % the second cell {2,group} is the features that will be passed to a classifier (or PCA)
+        pool_size = opts.pool_size;
+        opts.pool_size = opts.pool_size_multidict;
+        if (opts.pruned)
+            % only supported for a 2 layer network
+            fmaps_out{2,group} = fmaps_out{1,group}(:,:,sum(opts.connections_next,1) > max(opts.connections_next(:))*1e-5,:);
+            fmaps_out{2,group} = pool_wrap(fmaps_out{2,group}, opts); 
+        else
+            fmaps_out{2,group} = pool_wrap(fmaps_out{1,group}, opts); % propagate all features
+        end
+        opts.pool_size = pool_size;
+    end
+
+    % Local contrast normalization (LCN) for the features forward passed to the next layer
+    if (opts.lcn)
+        if (isempty(opts.connections_next))
+            connections = true(size(fmaps_out{1,group},3),1); % LCN for all feature maps
+        else
+            % LCN only for those features connected to the next layer
+            connections = sum(opts.connections_next,1) > max(opts.connections_next(:))*1e-5;
+        end
+        if (nnz(connections) <= 1), error('connections are invalid'); end
+        if (~isempty(opts.stats))
+            fmaps_out{1,group}(:,:,connections,:) = lcn(fmaps_out{1,group}(:,:,connections,:), opts.stats.lcn_mn(group), opts.is_vl); 
+        else
+            [fmaps_out{1,group}(:,:,connections,:), stats{group}.lcn_mn] = lcn(fmaps_out{1,group}(:,:,connections,:), [], opts.is_vl);
+        end
+    else
+        stats{group}.lcn_mn = nan;
+    end
+    % POOLING (regular)
+    fmaps_out{1,group} = pool_wrap(fmaps_out{1,group}, opts); 
 end
-clear fmaps;
+
 % Concatenate all groups
-fmaps_out{1,1} = cat(3,fmaps_out{1,:}); % 4d array: rows x cols x sz_filters(4)*opts.n_groups x n_samples
+for k=1:size(fmaps_out,1), fmaps_out{k,1} = cat(3,fmaps_out{k,:}); end % 4d array: rows x cols x sz_filters(4)*opts.n_groups x n_samples
 fmaps_out = fmaps_out(:,1);
-group = 1;
-
-% RECTIFICATION
-if (strcmpi(opts.rectifier,'abs'))
-    fmaps_out{1,group} = abs(fmaps_out{1,group});
-elseif (strcmpi(opts.rectifier,'relu'))
-    if (opts.is_vl)
-        fmaps_out{1,group} = vl_nnrelu(real(fmaps_out{1,group}), [], 'leak', opts.rectifier_leak);
-    else
-        fmaps_out{1,group} = real(fmaps_out{1,group}); % leak is ignored
-    end
-elseif (strcmpi(opts.rectifier,'logistic'))
-    k = 0.4;
-    fmaps_out{1,group} = 1./(1+exp(-k.*real(fmaps_out{1,group})));
-else
-    error('not supported rectifier type')
-end
-
-if (isempty(opts.stats))
-    stats{group} = stats{1};
-    stats{group}.max = gather(max(fmaps_out{1,group}(:)));
-    stats{group}.min = gather(min(fmaps_out{1,group}(:)));
-    stats{group}.mean = gather(mean(fmaps_out{1,group}(:)));
-end
-
-% Actual ReLU is here
-fmaps_out{1,group} = max(opts.rectifier_param(1), min(opts.rectifier_param(2), fmaps_out{1,group}));
-% the first cell {1,group} is the features that will be passed to the next layers
-
-% POOLING with larger pooling size for the multidictionary features forward passed directly to a classifier
-if (opts.multidict)
-    % the second cell {2,group} is the features that will be passed to a classifier (or PCA)
-    pool_size = opts.pool_size;
-    opts.pool_size = opts.pool_size_multidict;
-    if (opts.pruned)
-        % only supported for a 2 layer network
-        fmaps_out{2,group} = fmaps_out{1,group}(:,:,sum(opts.connections_next,1) > max(opts.connections_next(:))*1e-5,:);
-        fmaps_out{2,group} = pool_wrap(fmaps_out{2,group}, opts); 
-    else
-        fmaps_out{2,group} = pool_wrap(fmaps_out{1,group}, opts); % propagate all features
-    end
-    opts.pool_size = pool_size;
-end
-
-% Local contrast normalization (LCN) for the features forward passed to the next layer
-if (opts.lcn)
-    if (isempty(opts.connections_next))
-        connections = true(size(fmaps_out{1,group},3),1); % LCN for all feature maps
-    else
-        % LCN only for those features connected to the next layer
-        connections = sum(opts.connections_next,1) > max(opts.connections_next(:))*1e-5;
-    end
-    if (nnz(connections) <= 1), error('connections are invalid'); end
-    if (~isempty(opts.stats))
-        fmaps_out{1,group}(:,:,connections,:) = lcn(fmaps_out{1,group}(:,:,connections,:), opts.stats.lcn_mn(group), opts.is_vl); 
-    else
-        [fmaps_out{1,group}(:,:,connections,:), stats{group}.lcn_mn] = lcn(fmaps_out{1,group}(:,:,connections,:), [], opts.is_vl);
-    end
-else
-    stats{group}.lcn_mn = nan;
-end
-% POOLING (regular)
-fmaps_out{1,group} = pool_wrap(fmaps_out{1,group}, opts); 
 
 fmaps_out(cellfun(@isempty,fmaps_out)) = [];
 if (isempty(opts.stats))
@@ -435,22 +423,24 @@ end
 
 % PCA + whitening
 function features = pca_whiten_wrap(features, opts)
-opts.verbose = false;
-opts.pca_mode = 'pcawhiten';
-if (iscell(opts.PCA_matrix))
-    sz = [opts.sample_size(1:2)./opts.pool_size, opts.n_filters, opts.n_groups];
-    features_reshaped = reshape(features(:,1:prod(sz)), [size(features,1), sz]);
-    features_split = cell(1,opts.n_groups);
-    for group = 1:opts.n_groups
-        features_split{group} = ...
-            pca_zca_whiten(reshape(features_reshaped(:,:,:,:,group), [size(features_reshaped,1), ...
-            prod(sz(1:2))*opts.n_filters]), opts, opts.PCA_matrix{group}, opts.data_mean{group}, opts.L_regul{group});
+if (isfield(opts,'PCA_matrix') && ~isempty(opts.PCA_matrix))
+    opts.verbose = false;
+    opts.pca_mode = 'pcawhiten';
+    if (iscell(opts.PCA_matrix))
+        sz = [opts.sample_size(1:2)./opts.pool_size, opts.n_filters, opts.n_groups];
+        features_reshaped = reshape(features(:,1:prod(sz)), [size(features,1), sz]);
+        features_split = cell(1,opts.n_groups);
+        for group = 1:opts.n_groups
+            features_split{group} = ...
+                pca_zca_whiten(reshape(features_reshaped(:,:,:,:,group), [size(features_reshaped,1), ...
+                prod(sz(1:2))*opts.n_filters]), opts, opts.PCA_matrix{group}, opts.data_mean{group}, opts.L_regul{group});
+        end
+        % normalize features, concatenate with lower layer features
+        features_split = feature_scaling(cat(2,features_split{:}), 'stat');
+        features = feature_scaling(cat(2,features_split,feature_scaling(features(:,prod(sz)+1:end),'stat')), 'stat');
+    else
+        features = pca_zca_whiten(features, opts, opts.PCA_matrix, opts.data_mean, opts.L_regul);
     end
-    % normalize features, concatenate with lower layer features
-    features_split = feature_scaling(cat(2,features_split{:}), 'stat');
-    features = feature_scaling(cat(2,features_split,feature_scaling(features(:,prod(sz)+1:end),'stat')), 'stat');
-else
-    features = pca_zca_whiten(features, opts, opts.PCA_matrix, opts.data_mean, opts.L_regul);
 end
 
 end
