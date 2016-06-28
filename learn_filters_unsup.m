@@ -24,7 +24,8 @@ if (~isfield(opts,'sample_size'))
 end
 if (length(opts.sample_size) > 3)
     opts.sample_size(opts.sample_size == 1) = [];
-elseif (length(opts.sample_size) < 3)
+end
+if (length(opts.sample_size) < 3)
     opts.sample_size = [opts.sample_size,1];
 end
 

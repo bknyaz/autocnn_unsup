@@ -395,12 +395,16 @@ end
 % Normalizes feature maps (for MNIST)
 function fmaps = local_fmaps_norm(fmaps, sample_size)
 feat_norm = 'l2';
-fprintf('local feature maps %s-scaling \n', feat_norm)
+% fprintf('local feature maps %s-scaling \n', feat_norm)
 sz = size(fmaps); % 2d array: n_samples x features
 n = prod(sample_size(1:2));
 fmaps = permute(reshape(fmaps, round([sz(1), n, sz(end)/n])), [1,3,2]); % 3d array: n_samples x n_filters x n_pixels 
 fmaps = reshape(fmaps, round([sz(1)*sz(end)/n, n])); % 2d array: n_samples*n_filters x n_pixels
-fmaps = feature_scaling(fmaps, feat_norm);
+if (isa(fmaps,'gpuArray'))
+    fmaps = gpuArray(feature_scaling(gather(fmaps), feat_norm));
+else
+    fmaps = feature_scaling(fmaps, feat_norm);
+end
 % reshape back to vectors
 fmaps = reshape(permute(reshape(fmaps, [sz(1),sz(end)/n,n]),[1,3,2]),[sz(1),n,sz(end)/n]);
 fmaps = reshape(fmaps,sz);
