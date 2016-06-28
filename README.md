@@ -22,7 +22,8 @@ For classification it's required to install either [GTSVM] (http://ttic.uchicago
 If neither LIBSVM nor GTSVM is available, the code will use Matlab's [LDA] (http://www.mathworks.com/help/stats/fitcdiscr.html).
 
 ## Learning methods
-Currently, the supported unsupervised learning methods are k-means, [convolutional k-means] (conv_kmeans.m), k-medoids and GMM, we use VLFeat's k-means to obtain our results.
+Currently, the supported unsupervised learning methods are k-means, [convolutional k-means] (conv_kmeans.m), k-medoids, GMM, [ICA and ISA] (ica.m).
+We use VLFeat's k-means to obtain our results.
 
 ## Testing Environment
 - Ubuntu 16.04 LTS
