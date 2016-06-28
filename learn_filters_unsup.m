@@ -9,7 +9,7 @@ function [filters, params] = learn_filters_unsup(feature_maps, opts)
 % filter depth (number of channels) is defined by opts.connections (if not specified, equals opts.sample_size(end))
 % params - an array of cells (one cell per group) with vectors of the joint spatial and temporal resolutions for each filter
 %
-% Currently, the supported learning methods are k-means, convolutional k-means, kmedoids and GMM
+% Currently, the supported learning methods are k-means, convolutional k-means, kmedoids, GMM, ICA and ISA
 % It's highly recommended to install VlFeat (http://www.vlfeat.org/) beforehand, 
 % because it tends to be much faster than Matlab implementations
 
@@ -61,6 +61,14 @@ end
 n_groups = size(connections,1);
 
 %% Set default values of data independent parameters
+if (~isfield(opts,'learning_method'))
+    opts.learning_method = 'kmeans'; % clustering with k-means
+    fprintf('learning_method: \t ''%s'' \n', opts.learning_method)
+end
+if (strcmpi(opts.learning_method,'isa') && rem(opts.n_filters,4) ~= 0)
+    error('for ISA group size is fixed to 4, so the number of filters must be multiple of 4');
+end
+
 if (~isfield(opts,'patches_norm'))
     opts.patches_norm = 'gray'; % normalize patches in the range [0,1] before (whitening and) learning 
     fprintf('patches_norm: \t\t ''%s'' \n', opts.patches_norm)
@@ -70,21 +78,19 @@ if (~isfield(opts,'filters_whiten'))
     opts.filters_whiten = true; % true to whiten patches before learning
     fprintf('filters_whiten: \t %d \n', opts.filters_whiten)
 end
+opts.filters_whiten = opts.filters_whiten && ~strcmpi(opts.learning_method,'ica') && ~strcmpi(opts.learning_method,'isa');
 if (~isfield(opts,'whiten_independ'))
     opts.whiten_independ = false; % true to whiten patches before learning independently for each autoconvolution order
     fprintf('whiten_independ: \t %d \n', opts.whiten_independ)
 end
+opts.whiten_independ = opts.whiten_independ && opts.filters_whiten;
+
 opts.pca_epsilon = 0.05; % whitening regularization constant
 opts.pca_mode = 'zcawhiten'; % for patches whitening
     
 if (~isfield(opts,'shared_filters'))
     opts.shared_filters = true; % true to use same filters for all groups of feature maps
     fprintf('shared_filters: \t %d \n', opts.shared_filters)
-end
-
-if (~isfield(opts,'learning_method'))
-    opts.learning_method = 'kmeans'; % clustering with k-means
-    fprintf('learning_method: \t ''%s'' \n', opts.learning_method)
 end
 
 if (strcmpi(opts.learning_method,'kmeans'))
@@ -223,77 +229,16 @@ for group = 1:size(patches,2)
     % estimate the joint spatial and frequency resolution
     filters{group} = permute(reshape(filters_clusters,[size(filters_clusters,1),sz(1:3)]), [2:4,1]);
     params{group} = cell2mat(estimate_params(filters{group}));
+    
     % sort by the joint spatial and frequency resolution
-    [params{group},ids] = sort(params{group},'ascend');
-    filters{group} = filters{group}(:,:,:,ids);
+    if (~strcmpi(opts.learning_method,'isa'))
+        [params{group},ids] = sort(params{group},'ascend');
+        filters{group} = filters{group}(:,:,:,ids);
+    end
+    if (opts.vis), imsetshow(filters{group}); end
 end
 fprintf('filters are learned for %d group(s) \n', opts.n_groups)
 
-end
-
-function X_n = autoconv_recursive_2d(X, conv_order_MAX, filter_size, norm_type)
-% X - a random image (patch) or batches in the spatial domain
-% n_MAX - the last autoconvolution order
-% filter_size - desired size of returned patches
-% X_n - a collection of autoconvolutional patches of orders n=0,1,...,n_MAX
-% Patches are normalized in the range [0,1]
-
-samplingRatio = 2;
-X_n = cell(1,conv_order_MAX+1);
-y_min = min(min(min(X,[],1),[],2),[],3);
-y_max = max(max(max(X,[],1),[],2),[],3);
-for conv_order = 0:conv_order_MAX
-    if (conv_order > 0)
-        X = real(autoconv_2d(X, norm_type));
-        if (conv_order > 1)
-            if (rand > 0.5 || conv_order == 3)
-                X = imresize(X,1/samplingRatio); 
-            else
-                X = downsample(X, samplingRatio, 'space');
-            end
-        end
-        X = change_range(real(X), y_min, y_max, norm_type);
-        X_n{1,conv_order+1} = single(change_range(imresize(X,filter_size(1)/size(X,1)), y_min, y_max, norm_type));
-    else
-        if (size(X,1) ~= filter_size(1))
-            y_tmp = imresize(X, filter_size(1)/size(X,1));
-            y_tmp = change_range(y_tmp, y_min, y_max, norm_type);
-            if (conv_order_MAX == 0)
-                X = y_tmp;
-            end
-        else
-            y_tmp = X;
-        end
-        X_n{1,conv_order+1} = y_tmp;
-    end
-end
-end
-
-function X = autoconv_2d(X, norm_type)
-% input X - an input image in the spatial domain
-% output X - a result in the spatial domain of convolving X with itself
-% X can be a batch of images, the first two dimensions must be the spatial (rows,columns) ones
-
-if (norm_type == 1)
-    m = mean(mean(X,1),2);
-    X = bsxfun(@minus,X,m);
-    sd = std(std(X,0,1),0,2);
-    X = bsxfun(@rdivide,X,sd+1e-5);
-else
-    m = mean(mean(mean(X,1),2),3);
-    X = bsxfun(@minus,X,m);
-end
-sz = size(X);
-X = padarray(X, sz(1:2)-1, 'post'); % zero-padding to compute linear convolution
-X = ifft2(fft2(X).^2); % autoconvolution in the frequency domain 
-end
-
-function y = change_range(y, y_min, y_max, norm_type)
-if (norm_type ~= 1)
-    m1 = min(min(min(y,[],1),[],2),[],3);
-    m2 = max(max(max(y,[],1),[],2),[],3);
-    y = bsxfun(@plus,bsxfun(@times,bsxfun(@rdivide,bsxfun(@minus,y,m1),bsxfun(@minus,m2,m1)),bsxfun(@minus,y_max,y_min)),y_min);
-end
 end
 
 function [filters, cluster_ids, clusters_weights] = learn_filters(data, opts)
@@ -309,6 +254,36 @@ clusters_weights = [];
 
 if (strcmpi(opts.learning_method,'random'))
     filters = data(randperm(sz(1),opts.n_filters),:);
+elseif (strcmpi(opts.learning_method,'ica') || strcmpi(opts.learning_method,'isa'))
+    opts.pca_dim = opts.n_filters;
+    opts.pca_fast = false;
+    opts.pca_mode = 'pcawhiten';
+    [X, PCA_matrix, ~, L_regul] = pca_zca_whiten(data, opts);
+    X = X';
+    whiteningMatrix = L_regul*PCA_matrix'; 
+    dewhiteningMatrix = PCA_matrix*(L_regul^(-1))';
+    ica_p = [];
+    ica_p.iter_max = 5000;
+    ica_p.seed = 1;
+    ica_p.write = 100;
+    ica_p.gpu = 1;
+    ica_p.components = size(X,1);
+    if (strcmpi(opts.learning_method,'ica'))
+        ica_p.model = 'ica';
+        ica_p.algorithm = 'fixed-point';
+    else
+        ica_p.model = 'isa';
+        ica_p.algorithm = 'gradient';
+        ica_p.groupsize = 4;
+        ica_p.groups = opts.n_filters/ica_p.groupsize;
+        ica_p.stepsize = 0.1;
+        ica_p.epsi = 0.005;
+    end
+    ica_data = ica(X, whiteningMatrix, dewhiteningMatrix, ica_p);
+    filters = ica_data.A';
+    if (ica_p.gpu)
+        filters = gather(filters);
+    end
 elseif (strcmpi(opts.learning_method,'vl_gmm'))
     [filters,~,~] = vl_gmm(data', opts.n_filters);
     filters = filters';
@@ -406,47 +381,4 @@ widthData.eigs = eig_vectors;
 widthData.w_cov = weighted_cov;
 widthData.w_means = m_w;
 widthData.width = prod(widthData.s);
-end
-
-function f = downsample(f, dwn_coef, type, varargin)
-% This is a quite general function to take a central part of some signal f with some downsampling coefficient dwn_coef.
-% type can be 'freq', otherwise assumed 'spatial'
-% varargin can be used to specify the number of dimensions along which downsampling is performed
-% the size of output f is defined as size(f)/dwn_coef
-
-if (nargin <= 3)
-    n_dimensions = 2;
-else
-    n_dimensions = varargin{1};
-end
-
-if (n_dimensions > 3)
-    error('maximum 3 dimensions is supported')
-end
-
-if (length(dwn_coef) == 1)
-    dwn_coef = repmat(dwn_coef,1,n_dimensions);
-elseif (length(dwn_coef) == 2)
-    dwn_coef = [dwn_coef,1];
-end
-if (isequal(lower(type),'freq'))
-    f = fftshift(f);
-end
-sz = size(f);
-sz = sz(1:n_dimensions);
-sz_new = round(sz./dwn_coef(1:n_dimensions));
-d = repmat((sz-sz_new)./2,2,1);
-for i=1:n_dimensions
-    if (abs(d(1,i)-floor(d(1,i))) > eps)
-        d(1,i) = ceil(d(1,i));
-        d(2,i) = floor(d(2,i));
-    end
-end
-f = f(d(1,1)+1:end-d(2,1), d(1,2)+1:end-d(2,2), :, :, :);
-if (n_dimensions >= 3)
-    f = f(:,:,d(1,3)+1:end-d(2,3),:,:);
-end
-if (isequal(lower(type),'freq'))
-    f = ifftshift(f);
-end
 end
