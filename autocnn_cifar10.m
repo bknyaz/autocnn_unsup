@@ -94,12 +94,11 @@ data_train.images = [];
 data_train.labels = [];
 for batch_id=1:5
     imdb = load(fullfile(opts.dataDir,sprintf('data_batch_%d',batch_id)));
-    n_samples = size(imdb.data,1);
-    imdb.data = single(reshape(permute(reshape(imdb.data, [n_samples,opts.sample_size]), [1,3,2,4]), ...
-        [n_samples,prod(opts.sample_size)]))./255;
-    data_train.images = [data_train.images;imdb.data];
+    imdb.data = single(permute(reshape(imdb.data, [size(imdb.data,1),opts.sample_size]), [1,3,2,4]))./255;
+    data_train.images = cat(1,data_train.images,imdb.data);
     data_train.labels = uint8([data_train.labels;imdb.labels]);
 end
+data_train.images = reshape(data_train.images, [size(data_train.images,1),prod(opts.sample_size)]);
 data_train.unlabeled_images = data_train.images; % unwhitened images (to learn filters and connections)
 
 if (opts.whiten && exist(fullfile(opts.dataDir,'train_whitened.mat'),'file'))
@@ -112,11 +111,10 @@ if (opts.whiten && exist(fullfile(opts.dataDir,'train_whitened.mat'),'file'))
     data_test.labels = uint8(imdb.labels);
 else
     imdb = load(fullfile(opts.dataDir,'test_batch'));
-    data_test.images = imdb.data; % unwhitened test images
+    imdb.data = single(permute(reshape(imdb.data, [size(imdb.data,1),opts.sample_size]), [1,3,2,4]))./255;
+    imdb.data = reshape(imdb.data, [size(imdb.data,1),prod(opts.sample_size)]);
     data_test.labels = uint8(imdb.labels);
-    imdb.data = single(reshape(permute(reshape(imdb.data, [n_samples,opts.sample_size]), [1,3,2,4]), ...
-        [n_samples,prod(opts.sample_size)]))./255;
-    data_test.images = imdb.data;
+    data_test.images = imdb.data; % unwhitened test images
     if (opts.whiten)
         fprintf('performing data whitening \n')
         opts.pca_dim = [];
