@@ -51,7 +51,7 @@ for layer_id=1:numel(net.layers)
     
     % Turn local contrast normalization on/off
     lcn = find_value(varargin, 'lcn', layer_id, -1);
-    if (lcn > 0)
+    if (lcn >= 0)
         net.layers{layer_id}.lcn = lcn;
     end
         
