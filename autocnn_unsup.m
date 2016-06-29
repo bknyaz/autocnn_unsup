@@ -3,6 +3,8 @@ function test_results = autocnn_unsup(data_train, data_test, net, opts)
 
 fprintf('setting up GPU and %s \n', upper('dependencies'))
 [net, opts] = set_up(net, opts); % check GPU, dependencies and add paths
+net.layers{1}.flip = false;
+opts.norm = 'stat';
 
 if (~isfield(opts,'n_train'))
     opts.n_train = size(data_train.images,1); % full test
@@ -32,6 +34,25 @@ data_train.unlabeled_images_whitened = data_train.unlabeled_images_whitened(unla
 fprintf('dataset %s: \n', upper('statistics'))
 fprintf('training id min = %d, max = %d \n', min(train_ids), max(train_ids))
 print_data_stats(data_train, data_test);
+
+if (strcmpi(opts.dataset,'stl10') && opts.fold_id > 1)
+%% STL-10 code for folds 2-10
+    fprintf('\n-> processing %s samples \n', upper('training'))
+    train_features = forward_pass(data_train.images, net);
+    if (net.layers{1}.augment)
+        fprintf('\n-> processing %s samples \n', upper('training (augmented)'))
+        net.layers{1}.flip = true;
+        train_features = cat(1,train_features,forward_pass(data_train.images, net));
+        train_labels = repmat(data_train.labels,2,1);
+    else
+        train_labels = data_train.labels;
+    end
+    fprintf('\n-> %s with %s \n', upper('classification'), upper(opts.classifier));
+    [test_results.acc, test_results.scores, test_results.predicted_labels] = ...
+        classifier_committee(train_features, opts.test_features, train_labels, data_test.labels, opts);
+    test_results = save_data(test_results, net, opts);
+    return;
+end
 
 %% Learn filters and connections
 for layer_id=1:numel(net.layers), net.layers{layer_id}.stats = []; net.layers{layer_id}.PCA_matrix = []; end
@@ -70,7 +91,6 @@ fprintf('\n-> processing %s samples \n', upper('training (unlabeled)'))
 opts.PCA_dim(opts.PCA_dim > size(train_features,2)) = [];
 
 %% Dimension reduction (PCA) for groups of feature maps
-opts.norm = 'stat';
 opts.pca_mode = 'pcawhiten';
 opts.pca_fast = true;
 n_max_pca = 7*10^5; % depends on RAM and the number of unlabeled samples
@@ -100,7 +120,7 @@ if (size(train_features,2) > n_max_pca)
     train_features = feature_scaling(cat(2,train_features_reshaped,feature_scaling(train_features(:,prod(sz)+1:end),opts.norm)),opts.norm);
     clear train_features_split
     clear train_features_reshaped
-elseif (size(data_train.images,1) > 10^3)
+elseif (size(train_features,1) > 10^3)
     opts.pca_dim = max(opts.PCA_dim);
     opts.verbose = true;
     [train_features, net.layers{end}.PCA_matrix, net.layers{end}.data_mean, net.layers{end}.L_regul] = ...
@@ -119,6 +139,7 @@ elseif (size(data_train.images,1) > size(data_train.unlabeled_images_whitened,1)
     fprintf('\n-> processing the rest of %s samples \n', upper('training'))
     train_features = cat(1,train_features,forward_pass(data_train.images(n+1:end,:), net));
 end
+
 fprintf('\n-> processing %s samples \n', upper('test'))
 test_features = forward_pass(data_test.images, net);
 
@@ -127,8 +148,10 @@ if (net.layers{1}.augment)
     net.layers{1}.flip = true;
     train_features = cat(1,train_features,forward_pass(data_train.images, net));
     train_labels = repmat(data_train.labels,2,1);
-    fprintf('\n-> processing %s samples \n', upper('test (augmented)'))
-    test_features = cat(1,test_features,forward_pass(data_test.images, net));
+    if (~isfield(opts,'test_features') || isempty(opts.test_features))
+        fprintf('\n-> processing %s samples \n', upper('test (augmented)'))
+        test_features = cat(1,test_features,forward_pass(data_test.images, net));
+    end
 else
     train_labels = data_train.labels;
 end
@@ -150,6 +173,11 @@ fprintf('\n-> %s with %s \n', upper('classification'), upper(opts.classifier));
 test_results.net = net;
 
 %% Save data
+test_results = save_data(test_results, net, opts, test_features);
+
+end
+
+function test_results = save_data(test_results, net, opts, test_features)
 folds_str = '';
 if (opts.n_folds > 1)
     folds_str = sprintf('_%dfolds', opts.n_folds);
@@ -162,9 +190,9 @@ end
 try
     % prevent saving huge PCA matrices
     for layer_id=1:numel(net.layers) 
-        net.layers{layer_id}.PCA_matrix = []; 
-        net.layers{layer_id}.data_mean = []; 
-        net.layers{layer_id}.L_regul = []; 
+        PCA_matrix{layer_id} = net.layers{layer_id}.PCA_matrix; net.layers{layer_id}.PCA_matrix = []; 
+        data_mean{layer_id} = net.layers{layer_id}.data_mean; net.layers{layer_id}.data_mean = []; 
+        L_regul{layer_id} = net.layers{layer_id}.L_regul; net.layers{layer_id}.L_regul = []; 
     end
     if (opts.n_folds > 1)
         if (opts.fold_id > 1)
@@ -185,6 +213,16 @@ try
 catch e 
     warning('error while saving test file: %s', e.message)
 end
+if (strcmpi(opts.dataset,'stl10') && opts.fold_id == 1)
+    test_results.test_features = test_features;
+    for layer_id=1:numel(net.layers) 
+        net.layers{layer_id}.PCA_matrix = PCA_matrix{layer_id}; 
+        net.layers{layer_id}.data_mean = data_mean{layer_id};
+        net.layers{layer_id}.L_regul = L_regul{layer_id}; 
+    end
+    test_results.net = {net};
+end
+
 end
 
 function [net, opts] = set_up(net, opts)
@@ -281,7 +319,7 @@ D = pdist2(data_train.unlabeled_images(randperm(size(data_train.unlabeled_images
 m = min(D(:));
 fprintf('min distance between 1k random unlabeled and test samples: %3.3f \n', m)
 if (m < 1e-5)
-    error('unlabeled and test samples might overlap')
+    warning('unlabeled and test samples might overlap')
 end
 n = min([1000, size(data_train.unlabeled_images_whitened,1), size(data_test.images,1)]);
 D = pdist2(data_train.unlabeled_images_whitened(randperm(size(data_train.unlabeled_images_whitened,1),n),:),...
@@ -289,6 +327,6 @@ D = pdist2(data_train.unlabeled_images_whitened(randperm(size(data_train.unlabel
 m = min(D(:));
 fprintf('min distance between 1k random unlabeled (whitened) and test samples: %3.3f \n', m)
 if (m < 1e-5)
-    error('unlabeled (whitened) and test samples might overlap')
+    warning('unlabeled (whitened) and test samples might overlap')
 end
 end

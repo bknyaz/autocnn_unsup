@@ -100,14 +100,14 @@ end
 f=fopen(fullfile(opts.dataDir, 'train-images-idx3-ubyte'),'r');
 x1=fread(f,inf,'uint8');
 fclose(f);
-data_train.images = reshape(permute(reshape(single(x1(17:end)),[opts.sample_size(1:2),60e3]),[3 2 1]),...
+data_train.images = reshape(permute(reshape(single(x1(17:end))./255,[opts.sample_size(1:2),60e3]),[3 2 1]),...
     [60e3,prod(opts.sample_size(1:2))]);
+data_train.unlabeled_images = data_train.images;
 
-% global mean and std
 f=fopen(fullfile(opts.dataDir, 't10k-images-idx3-ubyte'),'r') ;
 x2=fread(f,inf,'uint8');
-fclose(f) ;
-data_test.images = reshape(permute(reshape(single(x2(17:end)),[opts.sample_size(1:2),10e3]),[3 2 1]),...
+fclose(f);
+data_test.images = reshape(permute(reshape(single(x2(17:end))./255,[opts.sample_size(1:2),10e3]),[3 2 1]),...
     [10e3,prod(opts.sample_size(1:2))]);
 
 f=fopen(fullfile(opts.dataDir, 'train-labels-idx1-ubyte'),'r');
@@ -120,10 +120,12 @@ y2=fread(f,inf,'uint8');
 fclose(f);
 data_test.labels = double(y2(9:end));
 
-data_train.unlabeled_images = data_train.images;
 if (opts.whiten)
     fprintf('performing data whitening \n')
-    [data_train.images, PCA_matrix, data_mean, L_regul] = pca_zca_whiten(data_train.unlabeled_images, opts);
+    opts.pca_dim = [];
+    opts.pca_epsilon = 0.05;
+    opts.pca_mode = 'zcawhiten';
+    [data_train.images, PCA_matrix, data_mean, L_regul] = pca_zca_whiten(data_train.images, opts);
     data_test.images = pca_zca_whiten(data_test.images, opts, PCA_matrix, data_mean, L_regul);
 end
 

@@ -55,6 +55,13 @@ for layer_id = 1:n_layers
     if (~isfield(net.layers{layer_id},'conv_pad'))
         net.layers{layer_id}.conv_pad = floor(net.layers{layer_id}.filter_size(1:2)./2); % zero padding for convolution
     end
+    if (~isfield(net.layers{layer_id},'pool_pad'))
+        m = mod(net.layers{layer_id}.sample_size(1)./net.layers{layer_id}.conv_stride, net.layers{layer_id}.pool_size);
+        net.layers{layer_id}.pool_pad = m;
+        if (m > 0)
+            net.layers{layer_id}.pool_pad = (net.layers{layer_id}.pool_size-m)/2;
+        end
+    end
 
     % prepare filters
     if (~net.layers{layer_id}.is_vl)
@@ -363,15 +370,15 @@ end
 if (isfield('opts','pool_fn') && ~isempty(opts.pool_fn))
     fmaps = opts.pool_fn(fmaps, opts); % can be some custom pooling function
 elseif (~opts.is_vl)
-    fmaps = pool_disjoint(fmaps, opts.pool_size, opts.pool_op);
+    fmaps = pool_disjoint(fmaps, opts.pool_size, opts.pool_pad, opts.pool_op);
 else
-    fmaps = vl_nnpool(fmaps, opts.pool_size, 'stride', opts.pool_size, 'method', opts.pool_op);
+    fmaps = vl_nnpool(fmaps, opts.pool_size, 'stride', opts.pool_size, 'pad', opts.pool_pad, 'method', opts.pool_op);
 end
 
 end
 
 % Pooling from squared disjoint regions within a feature map
-function fmaps = pool_disjoint(fmaps, pool_size, method)
+function fmaps = pool_disjoint(fmaps, pool_size, pool_pad, method)
 if (ischar(method))
     if (strcmpi(method,'max'))
         pool_op = @(input) max(max(input,[],1),[],2);
@@ -382,6 +389,9 @@ if (ischar(method))
     end
 else
     pool_op = method;
+end
+if (pool_pad > 0)
+    fmaps = padarray(fmaps, [pool_pad,pool_pad], 0, 'both');
 end
 for c=1:size(fmaps,2)/pool_size
     for r=1:size(fmaps,1)/pool_size
