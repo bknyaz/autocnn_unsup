@@ -38,7 +38,7 @@ if (~isfield(opts,'conv_norm'))
     opts.conv_norm = 'rootsift';
 end
 if (~isfield(opts,'arch'))
-    opts.arch = '1024c13-2p-conv0_4__128g-4ch-160c11-4p-conv2_3'; % define a large 2 layer architecture
+    opts.arch = '1024c11-2p-conv0_4__128g-4ch-160c9-4p-conv2_3'; % define a large 2 layer architecture
 end
 sample_size = [32,32,3];
 opts.net_init_fn = @() net_init(opts.arch, opts, 'sample_size', sample_size, varargin{:});
@@ -96,7 +96,7 @@ for batch_id=1:5
     imdb = load(fullfile(opts.dataDir,sprintf('data_batch_%d',batch_id)));
     imdb.data = single(permute(reshape(imdb.data, [size(imdb.data,1),opts.sample_size]), [1,3,2,4]))./255;
     data_train.images = cat(1,data_train.images,imdb.data);
-    data_train.labels = uint8([data_train.labels;imdb.labels]);
+    data_train.labels = [data_train.labels;imdb.labels];
 end
 data_train.images = reshape(data_train.images, [size(data_train.images,1),prod(opts.sample_size)]);
 data_train.unlabeled_images = data_train.images; % unwhitened images (to learn filters and connections)
@@ -105,15 +105,15 @@ if (opts.whiten && exist(fullfile(opts.dataDir,'train_whitened.mat'),'file'))
     fprintf('loading whitened data \n')
     imdb = load(fullfile(opts.dataDir,'train_whitened'));
     data_train.images = imdb.data;
-    data_train.labels = uint8(imdb.labels);
+    data_train.labels = imdb.labels;
     imdb = load(fullfile(opts.dataDir,'test_whitened'));
     data_test.images = imdb.data;
-    data_test.labels = uint8(imdb.labels);
+    data_test.labels = imdb.labels;
 else
     imdb = load(fullfile(opts.dataDir,'test_batch'));
     imdb.data = single(permute(reshape(imdb.data, [size(imdb.data,1),opts.sample_size]), [1,3,2,4]))./255;
     imdb.data = reshape(imdb.data, [size(imdb.data,1),prod(opts.sample_size)]);
-    data_test.labels = uint8(imdb.labels);
+    data_test.labels = imdb.labels;
     data_test.images = imdb.data; % unwhitened test images
     if (opts.whiten)
         fprintf('performing data whitening \n')
