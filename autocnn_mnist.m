@@ -38,11 +38,12 @@ if (~isfield(opts,'conv_norm'))
     opts.conv_norm = 'stat';
 end
 if (~isfield(opts,'arch'))
-    opts.arch = '192c13-2p-conv1_3__32g-3ch-64c11-2p-conv2_3'; % define a 2 layer architecture
+    opts.arch = '192c11-2p-conv1_3__32g-3ch-64c9-2p-conv2_3'; % define a 2 layer architecture
 end
 
 sample_size = [28,28,1];
 opts.lcn_l2 = true; % local feature map normalization
+opts.lcn = false; % LCN is turned off for MNIST
 opts.net_init_fn = @() net_init(opts.arch, opts, 'sample_size', sample_size, varargin{:});
 rootFolder = fileparts(mfilename('fullpath'));
 if (~isfield(opts,'dataDir'))
