@@ -42,7 +42,8 @@ We use VLFeat's k-means to obtain our results.
 ## Results
 So far, the model is purely unsupervised, i.e. fine tuning is not applied. 
 Also, no data augmentation and no cropping is applied, other than horizontal flipping when specified (see Tables below).
-Flipping is not applied (so far) for test samples in any case.
+flip - indicates that flipping is applied only for training samples (the test set is not augmented).
+**flip** - indicates that flipping is applied both for training and test samples.
 We report 2 results (in table cells): with a single SVM / SVM committee.
 
 ### MNIST
@@ -70,7 +71,8 @@ Model | CIFAR-10 (400) | CIFAR-10
 420c13-128g-160c11 | 73.8 / 75.5 | 84.4 / 85.1
 420c13-128g-160c11+flip | 75.9 / 77.4 | 85.8 / 86.4
 675c13-256g-160c11 | 74.4 / 75.9 | 84.7 / 85.4
-675c13-256g-160c11+flip | **76.4 / 77.9** | **86.0 / 86.6**
+675c13-256g-160c11+flip | **76.4 / 77.9** | 86.0 / 86.6
+675c11-256g-160c9+**flip** | - / - | **86.6 / 87.1**
 
 Approximate total (training+prediction) time for 1 test. We also report prediction time (required to process and 
 classify all 10k test samples), which is more relevant in practice. 
@@ -83,6 +85,7 @@ Model | CIFAR-10 (400) | CIFAR-10 | CIFAR-10 (prediction)
 420c13-128g-160c11+flip | 16 min / 17 min | 45 min / 80 min | 3 min / 3.5 min
 675c13-256g-160c11 | 21.5 min / 22 min | 50 min / 65 min | 5 min / 5.5 min
 675c13-256g-160c11+flip | 24 min / 25 min | 80 min / 110 min | 5.5 min / 6 min
+650c11-256g-160c9+**flip** | - / - | 55 min / 90 min | 7 min / 8 min
 
 ### STL-10
 
@@ -93,8 +96,8 @@ Will be updated soon.
 
 Model | STL-10
 -------|:--------:
-1024c13 | - / -
-1024c13+flip | - / -
+1024c29 | 60.0 / 62.8
+1024c29+**flip** | **64.1 / 66.1**
 420c13-128g-160c11 | - / -
 420c13-128g-160c11+flip | - / -
 675c13-256g-160c11 | - / -

@@ -223,6 +223,13 @@ if (strcmpi(opts.dataset,'stl10') && opts.fold_id == 1)
     test_results.net = {net};
 end
 
+% print (intermediate) results
+try
+    acc = cat(3,test_results.acc{:});
+    acc = [[mean(acc(1,:,:),3);std(acc(1,:,:),0,3)]',[mean(acc(2,:,:),3);std(acc(2,:,:),0,3)]',opts.PCA_dim'./1000]
+catch
+end
+
 end
 
 function [net, opts] = set_up(net, opts)

@@ -83,13 +83,6 @@ for fold_id = 1:opts.n_folds
     time_start = clock;
 end
 
-% print results
-try
-    acc = cat(3,test_results.acc{:});
-    acc = [[mean(acc(1,:,:),3);std(acc(1,:,:),0,3)]',[mean(acc(2,:,:),3);std(acc(2,:,:),0,3)]',opts.PCA_dim'./1000]
-catch
-end
-
 end
 
 function [data_train, data_test] = load_STL10_data(opts, fold_id, n_unlabeled)
@@ -120,7 +113,7 @@ if (opts.whiten && exist(fullfile(opts.dataDir,'train_whitened.mat'),'file'))
     % load whitened unlabeled images (to perform PCA) if requested
     if (n_unlabeled)
         fprintf('loading whitened unlabeled data \n')
-        mFile = matfile(fullfile(folderPath,'unlabeled_whitened.mat'));
+        mFile = matfile(fullfile(opts.dataDir,'unlabeled_whitened.mat'));
         data_train.unlabeled_images_whitened = mFile.X(1:n_unlabeled,:);
         clear mFile;
     end
@@ -142,7 +135,8 @@ else
     data_train.images = single(imdb.X)./255;
     data_train.labels = imdb.y;
     if (opts.whiten)
-        fprintf('performing data whitening \n')
+        % we need for than 27k samples here, so load 40k
+        fprintf('performing data whitening (this can take a long time) \n')
         opts.pca_dim = [];
         opts.pca_epsilon = 0.05;
         opts.pca_mode = 'zcawhiten';
@@ -174,6 +168,5 @@ if (n_unlabeled)
     data_train.unlabeled_images = data_train.unlabeled_images(unlabeled_ids,:);
     data_train.unlabeled_images_whitened = data_train.unlabeled_images_whitened(unlabeled_ids,:);
 end
-
 
 end
