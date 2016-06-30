@@ -146,6 +146,7 @@ else
         opts.pca_dim = [];
         opts.pca_epsilon = 0.05;
         opts.pca_mode = 'zcawhiten';
+        opts.pca_fast = false;
         whitened_data = opts;
         [X, whitened_data.PCA_matrix, whitened_data.data_mean, whitened_data.L_regul] = ...
             pca_zca_whiten(data_train.unlabeled_images, opts);

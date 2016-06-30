@@ -191,8 +191,8 @@ try
     % prevent saving huge PCA matrices
     for layer_id=1:numel(net.layers) 
         PCA_matrix{layer_id} = net.layers{layer_id}.PCA_matrix; net.layers{layer_id}.PCA_matrix = []; 
-        data_mean{layer_id} = net.layers{layer_id}.data_mean; net.layers{layer_id}.data_mean = []; 
-        L_regul{layer_id} = net.layers{layer_id}.L_regul; net.layers{layer_id}.L_regul = []; 
+        if (isfield(net.layers{layer_id},'data_mean')), data_mean{layer_id} = net.layers{layer_id}.data_mean; net.layers{layer_id}.data_mean = []; end
+        if (isfield(net.layers{layer_id},'L_regul')), L_regul{layer_id} = net.layers{layer_id}.L_regul; net.layers{layer_id}.L_regul = []; end
     end
     if (opts.n_folds > 1)
         if (opts.fold_id > 1)
