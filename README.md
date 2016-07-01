@@ -59,7 +59,7 @@ Model | MNIST (100), single SVM / committee | MNIST, single SVM / committee
 192c11-32g-64c9 | - / - | - / -
 
 
-### CIFAR-10, STL-10
+### CIFAR-10
 Test accuracy (%) on CIFAR-10 (400) with 400 labeled images per class and using all (50k) CIFAR-10 training data. 
 In both cases we report average % for 10 random tests. SVM committees consist of 12 models in case of 1 layer 
 and 16 models in case of 2 layers (see code for details).
@@ -72,7 +72,7 @@ Model | CIFAR-10 (400) | CIFAR-10
 420c13-128g-160c11+flip | 75.9 / 77.4 | 85.8 / 86.4
 675c13-256g-160c11 | 74.4 / 75.9 | 84.7 / 85.4
 675c13-256g-160c11+flip | **76.4 / 77.9** | 86.0 / 86.6
-675c11-256g-160c9+**flip** | - / - | **86.6 / 87.1**
+650c11-256g-160c9+**flip** | - / - | **86.6 / 87.1**
 
 Approximate total (training+prediction) time for 1 test. We also report prediction time (required to process and 
 classify all 10k test samples), which is more relevant in practice. 
@@ -89,16 +89,14 @@ Model | CIFAR-10 (400) | CIFAR-10 | CIFAR-10 (prediction)
 
 ### STL-10
 
-Test accuracy (%) on STL-10 using 10 predefined folds. SVM committees consist of 16 models in case of 1 layer 
+Average test accuracy (%) on STL-10 using 10 predefined folds. SVM committees consist of 16 models in case of 1 layer 
 and 20 models in case of 2 layers (see code for details). 
-
-Will be updated soon.
 
 Model | STL-10
 -------|:--------:
 1024c29 | 60.0 / 62.8
-1024c29+**flip** | **64.1 / 66.1**
-420c13-128g-160c11 | - / -
-420c13-128g-160c11+flip | - / -
-675c13-256g-160c11 | - / -
-675c13-256g-160c11+flip | - / -
+1024c29+**flip** | 64.1 / 66.1
+420c21-128g-160c13 | 66.0 / 69.0
+420c21-128g-160c13+**flip**  | 69.8 / 71.7
+675c21-256g-160c13 | 66.1 / 69.0
+675c21-256g-160c13+**flip**  | 70.6 / 72.1
