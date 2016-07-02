@@ -107,20 +107,25 @@ Our SVM committee is several times cheaper computationally compared to a more tr
 Filters are sorted according to their joint spatial and frequency resolution.
 
 256 filters learned with k-means and conv_orders = [0:4] in layer 1
-![conv0_4_layer1_kmeans_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv0_4_kmeans_cifar10.png)
+
+![conv0_4_layer1_kmeans_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv0_4_layer1_kmeans_cifar10.png)
 
 256 filters learned with k-means and conv_orders = [0:4] in layer 1, 
 l2-normalization is applied before k-means
+
 ![conv0_4_layer1_kmeans_l2_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv0_4_layer1_kmeans_l2_cifar10.png)
 
 64 connections from layer 1 to layer 2 visualized as the filters of layer 1 connected into 64 groups of 3
+
 ![connections_layer1_2_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/connections_layer1_2_cifar10.png)
 
 128 filters learned with k-means and conv_orders = [2:3] in layer 2 in case of 3 channels per feature map group
+
 ![conv2_3_layer2_kmeans_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv2_3_layer2_kmeans_cifar10.png)
 
 128 filters learned with k-means and conv_orders = [2:3] in layer 2 in case of 3 channels per feature map group, 
 l2-normalization is applied before k-means
+
 ![conv2_3_layer2_kmeans_l2_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv2_3_layer2_kmeans_l2_cifar10.png)
 
 ### CIFAR-100
