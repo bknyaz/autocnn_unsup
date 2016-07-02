@@ -35,7 +35,7 @@ If neither LIBSVM nor GTSVM is available, the code will use Matlab's [LDA] (http
 Currently, the supported unsupervised learning methods are k-means, [convolutional k-means] (conv_kmeans.m), k-medoids, GMM, [ICA and ISA] (ica.m).
 We use VLFeat's k-means to obtain our results.
 
-## Testing Environment
+## Testing environment
 - Ubuntu 16.04 LTS
 - Matlab R2015b 
 - CUDA 7.5 (installed via apt-get install nvidia-cuda-toolkit)
@@ -50,21 +50,22 @@ We use VLFeat's k-means to obtain our results.
 ## Results
 - So far, the model is purely unsupervised, i.e. fine tuning is not applied. 
 - Also, no data augmentation and no cropping is applied, other than horizontal flipping when specified (see Tables below).
-- flip - indicates that flipping is applied only for training samples (the test set is not augmented).
+- flip - indicates that flipping (horizontal reflection, mirroring) is applied only for training samples 
+(the test set is not augmented).
 - **flip** - indicates that flipping is applied both for training and test samples.
 - We report 2 results (in table cells): with a single SVM / SVM committee.
 
 ### MNIST
-Test error (%) on MNIST (100) with 100 labeled images per class and using all (60k) MNIST training data. 
+Test error (%) on MNIST (100), MNIST (300) with 100 or 300 labeled images per class, and using all (60k) MNIST 
+training data. 
 In both cases we report average % for 10 random tests. 
 SVM committees consist of 8 models in case of 1 layer and 11 models in case of 2 layers (see code for details). 
+In our paper, the results on MNIST were obtained using LIBSVM. Here, we use GTSVM.
 
-Will be updated soon.
-
-Model           | MNIST (100)   | MNIST
--------         |:--------:     |:--------:
-256c13          | - / -         | - / -
-192c11-32g-64c9 | - / -         | - / -
+Model           | MNIST (100)   |MNIST (300)    | MNIST
+-------         |:--------:     |:--------:     |:--------:
+256c13          | - / -         | - / -         | - / -
+192c11-32g-64c9 | - / -         | - / 0.96         | - / -
 
 
 ### CIFAR-10
@@ -101,8 +102,29 @@ Model                       | CIFAR-10 (400)        | CIFAR-10              | CI
 Our SVM committee is several times cheaper computationally compared to a more traditional form of a committee 
 (i.e., when a model is trained from scratch several times).
 
+### Learned filters
+
+Filters are sorted according to their joint spatial and frequency resolution.
+
+256 filters learned with k-means and conv_orders = [0:4] in layer 1
+![conv0_4_layer1_kmeans_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/pics/conv0_4_kmeans_cifar10.png)
+
+256 filters learned with k-means and conv_orders = [0:4] in layer 1, 
+l2-normalization is applied before k-means
+![conv0_4_layer1_kmeans_l2_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/pics/conv0_4_layer1_kmeans_l2_cifar10.png)
+
+64 connections from layer 1 to layer 2 visualized as the filters of layer 1 connected into 64 groups of 3
+![connections_layer1_2_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/pics/connections_layer1_2_cifar10.png)
+
+128 filters learned with k-means and conv_orders = [2:3] in layer 2 in case of 3 channels per feature map group
+![conv0_4_layer2_kmeans_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/pics/conv0_4_layer2_kmeans_cifar10.png)
+
+128 filters learned with k-means and conv_orders = [2:3] in layer 2 in case of 3 channels per feature map group, 
+l2-normalization is applied before k-means
+![conv0_4_layer2_kmeans_l2_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/pics/conv0_4_layer2_kmeans_l2_cifar10.png)
+
 ### CIFAR-100
-All model settings are identical to CIFAR-10
+All model settings are identical to CIFAR-10.
 
 Model                       | CIFAR-100
 -------|:--------:
