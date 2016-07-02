@@ -117,11 +117,11 @@ l2-normalization is applied before k-means
 ![connections_layer1_2_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/connections_layer1_2_cifar10.png)
 
 128 filters learned with k-means and conv_orders = [2:3] in layer 2 in case of 3 channels per feature map group
-![conv0_4_layer2_kmeans_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv0_4_layer2_kmeans_cifar10.png)
+![conv2_3_layer2_kmeans_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv2_3_layer2_kmeans_cifar10.png)
 
 128 filters learned with k-means and conv_orders = [2:3] in layer 2 in case of 3 channels per feature map group, 
 l2-normalization is applied before k-means
-![conv0_4_layer2_kmeans_l2_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv0_4_layer2_kmeans_l2_cifar10.png)
+![conv2_3_layer2_kmeans_l2_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv2_3_layer2_kmeans_l2_cifar10.png)
 
 ### CIFAR-100
 All model settings are identical to CIFAR-10.
