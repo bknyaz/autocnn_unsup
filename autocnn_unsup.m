@@ -23,11 +23,17 @@ else
     end
 end
 train_ids = train_ids(randperm(length(train_ids)));
+n = min([1000,size(data_train.unlabeled_images,1),length(train_ids)]);
+if (size(data_train.unlabeled_images,1) == length(train_ids) && ...
+        norm(data_train.images(1:n,:)-data_train.unlabeled_images(1:n,:)) < 1e-5)
+    unlabeled_ids = train_ids;
+else
+    % unlabeled images are independent
+    unlabeled_ids = 1:size(data_train.unlabeled_images,1);
+    unlabeled_ids = unlabeled_ids(randperm(length(unlabeled_ids)));
+end
 data_train.images = data_train.images(train_ids,:);
 data_train.labels = data_train.labels(train_ids);
-% unlabeled images are independent
-unlabeled_ids = 1:size(data_train.unlabeled_images,1);
-unlabeled_ids = unlabeled_ids(randperm(length(unlabeled_ids)));
 data_train.unlabeled_images = data_train.unlabeled_images(unlabeled_ids,:);
 data_train.unlabeled_images_whitened = data_train.unlabeled_images_whitened(unlabeled_ids,:);
 
@@ -92,7 +98,9 @@ opts.PCA_dim(opts.PCA_dim > size(train_features,2)) = [];
 
 %% Dimension reduction (PCA) for groups of feature maps
 opts.pca_mode = 'pcawhiten';
-opts.pca_fast = true;
+if (~isfield(opts,'pca_fast') || isempty(opts.pca_fast))
+    opts.pca_fast = true;
+end
 n_max_pca = 7*10^5; % depends on RAM and the number of unlabeled samples
 if (size(train_features,2) > n_max_pca)
     fprintf('\n-> %s for groups of feature maps \n', upper('dimension reduction'))
@@ -237,6 +245,7 @@ try
     D = gpuDevice(1);
     g = gpuArray(rand(100,100));
     fprintf('GPU is OK \n')
+    if (~isfield(opts,'gpu')), for k=1:numel(net.layers), net.layers{k}.gpu = true; end; end
 catch e
     warning('GPU not available: %s', e.message)
     for k=1:numel(net.layers), net.layers{k}.gpu = false; end

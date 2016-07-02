@@ -62,7 +62,7 @@ net = opts.net_init_fn(); % initialize a network
 % PCA dimensionalities (p_j) for the SVM committee
 if (~isfield(opts,'PCA_dim'))
     if (numel(net.layers) > 1)
-        opts.PCA_dim = [30,40,70,80,120,150,250,300:100:1500];
+        opts.PCA_dim = [40,70,80,120,150,250,300:100:1500];
     else
         opts.PCA_dim = [30:10:100,120,150:50:250,300:100:600];
     end
@@ -162,7 +162,7 @@ else
     end
 end
 
-% we use the first 4k samples as unlabeled data, it's enough to learn filters and connections and perform PCA
+% we use the first 4k-10k samples as unlabeled data, it's enough to learn filters and connections and perform PCA
 if (n_unlabeled)
     unlabeled_ids = 1:min(n_unlabeled,10e3);
     data_train.unlabeled_images = data_train.unlabeled_images(unlabeled_ids,:);
