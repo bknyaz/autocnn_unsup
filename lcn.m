@@ -13,7 +13,7 @@ sz = size(x_ijk);
 if (length(sz) < 3), sz(3) = 1; end
 if (length(sz) < 4), sz(4) = 1; end
 
-sigma = ceil(sz(1)/16); % Gaussian window sigma
+sigma = 2; %ceil(sz(1)/16); % Gaussian window sigma
 
 % initialize a Gaussian weighting window
 w_pq = repmat(single(fspecial('gaus', round(sigma*4+1), sigma*1.5)), [1,1,sz(3)]); % sum(w(:)) = sz(3)
