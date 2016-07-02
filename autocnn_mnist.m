@@ -61,16 +61,18 @@ if (~isfield(opts,'n_folds'))
     opts.n_folds = 1;
 end
 
-for fold_id = 1:opts.n_folds
-    net = opts.net_init_fn(); % initialize a network
-    % PCA dimensionalities (p_j) for the SVM committee
-    if (~isfield(opts,'PCA_dim'))
-        if (numel(net.layers) > 1)
-            opts.PCA_dim = [50,70,90,100,120,150:50:400];
-        else
-            opts.PCA_dim = [50,70,90,100,120,150:50:250];
-        end
+net = opts.net_init_fn();
+% PCA dimensionalities (p_j) for the SVM committee
+if (~isfield(opts,'PCA_dim'))
+    if (numel(net.layers) > 1)
+        opts.PCA_dim = [50,70,90,100,120,150:50:400];
+    else
+        opts.PCA_dim = [50,70,90,100,120,150:50:250];
     end
+end
+
+for fold_id = 1:opts.n_folds
+    
     opts.fold_id = fold_id;
     test_results = autocnn_unsup(data_train, data_test, net, opts);
 
@@ -130,7 +132,10 @@ if (opts.whiten)
 end
 
 % we use the first 4k samples as unlabeled data, it's enough to learn filters and connections and perform PCA
-unlabeled_ids = 1:4*10^3;
+if (~isfield(opts,'n_unlabeled') || isempty(opts.n_unlabeled))
+    opts.n_unlabeled = 4e3;
+end
+unlabeled_ids = 1:opts.n_unlabeled;
 data_train.unlabeled_images = data_train.unlabeled_images(unlabeled_ids,:);
 data_train.unlabeled_images_whitened = data_train.images(unlabeled_ids,:);
 
