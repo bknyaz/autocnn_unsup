@@ -20,7 +20,10 @@ stats = cell(1,n_layers);
 n_samples = size(feature_maps,1);
 n_batches = ceil(n_samples/net.layers{1}.batch_size);
 
-features = {gpuArray(feature_maps(1:min(n_samples,2),:))};
+features = {feature_maps(1:min(n_samples,2),:)};
+if (net.layers{1}.gpu)
+    features{1} = gpuArray(features{1});
+end
 stats_size = cell(1,n_layers);
 % process 2 samples layer wise to check variables and preallocate arrays
 feature_length = zeros(1,n_layers);
@@ -41,7 +44,7 @@ for layer_id = 1:n_layers
     % for the last layer multidictionary features are not applicable
     if (layer_id == n_layers), net.layers{layer_id}.multidict = false; end % override the value
     
-    if (~isfield(net.layers{layer_id},'connections_next') && layer_id < n_layers)
+    if (~isfield(net.layers{layer_id},'connections_next') && layer_id < n_layers && net.layers{layer_id}.pruned)
         net.layers{layer_id}.connections_next = net.layers{layer_id+1}.connections; % to prune features
     else
         net.layers{layer_id}.connections_next = [];
@@ -233,7 +236,7 @@ if (any(sz_fmaps(1:2) > sz_filters(1:2)) && opts.is_vl)
 end
 if (~opts.is_vl)
     fmaps = padarray(fmaps, opts.filter_size(1:2) - 1 + opts.conv_pad - ...
-            floor(opts.filter_size(1:2)./2),0,'post');
+            floor(opts.filter_size(1:2)./2),0, 'post');
 end
 % PREPROCESSING
 % treat the entire batch with all feature map groups as a single vector
@@ -331,8 +334,15 @@ end
 % Concatenate all groups
 for k=1:size(fmaps_out,1), fmaps_out{k,1} = cat(3,fmaps_out{k,:}); end % 4d array: rows x cols x sz_filters(4)*opts.n_groups x n_samples
 fmaps_out = fmaps_out(:,1);
-
 fmaps_out(cellfun(@isempty,fmaps_out)) = [];
+% if (opts.n_groups > 1)
+%     fmaps_out{1} = reshape(fmaps_out{1}, [size(fmaps_out{1},1), size(fmaps_out{1},2), opts.n_filters, opts.n_groups, n_samples]);
+%     fmaps_out{1} = fft(fft(fmaps_out{1},[],3),[],4);
+%     fmaps_out{1}(abs(fmaps_out{1}) < 50) = 0;
+%     fmaps_out{1}(abs(fmaps_out{1}) > 65e3) = 65e3;
+%     fmaps_out{1} = real(ifft(ifft(fmaps_out{1},[],3),[],4));
+%     fmaps_out{1} = reshape(fmaps_out{1}, [size(fmaps_out{1},1), size(fmaps_out{1},2), opts.n_filters*opts.n_groups, n_samples]);
+% end
 if (isempty(opts.stats))
     stats{1}.output_size = cellfun(@size,fmaps_out,'UniformOutput',false);
 end
@@ -350,14 +360,18 @@ end
 function fmaps = conv_wrap(fmaps, filters, opts)
 if (opts.is_vl)
     % using Matconvnet
-    fmaps = vl_nnconv(fmaps, filters, [], 'stride', opts.conv_stride);
+    if (isreal(filters))
+        fmaps = vl_nnconv(fmaps, filters, [], 'stride', opts.conv_stride);
+    else
+        fmaps = vl_nnconv(fmaps, real(filters), [], 'stride', opts.conv_stride) + 1i.*vl_nnconv(fmaps, imag(filters), [], 'stride', opts.conv_stride);
+    end
 else
     % using Matlab in the frequency domain
     fmaps = bsxfun(@times, permute(fmaps,[1:3,5,4]), filters);
     for d=opts.dims, fmaps = ifft(fmaps,[],d); end
     sz = size(fmaps);
     offset = floor((sz(1:2) - opts.sample_size(1:2))./2);
-    fmaps = squeeze(sum(fmaps(offset+1:end-offset,offset+1:end-offset,:,:,:),3));
+    fmaps = squeeze(sum(fmaps(offset(1)+1:end-offset(1),offset(2)+1:end-offset(2),:,:,:),3));
 end
 
 end
