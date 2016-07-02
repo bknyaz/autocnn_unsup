@@ -80,14 +80,14 @@ classify all 10k test samples), which is more relevant in practice.
 
 Model | CIFAR-10 (400) | CIFAR-10 | CIFAR-10 (prediction)
 -------|:--------:|:--------:|:--------:
-1024c13 | **3 min / 3.5 min** | **4.5 min / 15 min** | **9 sec / 18 sec**
-1024c13+flip | **3 min** / 4 min | 6 min / 25 min | **9 sec** / 25 sec
-420c13-128g-160c11 | 15 min / 15.5 min | 30 min / 45 min | 3.1 min / 3.4 min
-420c13-128g-160c11+flip | 16 min / 17 min | 45 min / 80 min | 3 min / 3.5 min
-675c13-256g-160c11 | 21.5 min / 22 min | 50 min / 65 min | 5 min / 5.5 min
-675c13-256g-160c11+flip | 24 min / 25 min | 80 min / 110 min | 5.5 min / 6 min
-650c11-256g-160c9 | 19 min / 19.5 min | - / - | - / -
-650c11-256g-160c9+**flip** | 24 min / 25 min | 55 min / 90 min | 7 min / 8 min
+1024c13                     | **3 min / 3.5 min** | **4.5 min / 15 min** | **9 sec / 18 sec**
+1024c13+flip                | **3 min** / 4 min | 6 min / 25 min    | **9 sec** / 25 sec
+420c13-128g-160c11          | 15 min / 15.5 min | 30 min / 45 min   | 3.1 min / 3.4 min
+420c13-128g-160c11+flip     | 16 min / 17 min   | 45 min / 80 min   | 3 min / 3.5 min
+675c13-256g-160c11          | 21.5 min / 22 min | 50 min / 65 min   | 5 min / 5.5 min
+675c13-256g-160c11+flip     | 24 min / 25 min   | 80 min / 110 min  | 5.5 min / 6 min
+650c11-256g-160c9           | 19 min / 19.5 min | 36 min / 52 min   | - / -
+650c11-256g-160c9+**flip**  | 24 min / 25 min   | 55 min / 90 min   | 7 min / 8 min
 
 ### CIFAR-100
 All model settings are identical to CIFAR-10
