@@ -72,7 +72,8 @@ Model | CIFAR-10 (400) | CIFAR-10
 420c13-128g-160c11+flip | 75.9 / 77.4 | 85.8 / 86.4
 675c13-256g-160c11 | 74.4 / 75.9 | 84.7 / 85.4
 675c13-256g-160c11+flip | **76.4 / 77.9** | 86.0 / 86.6
-650c11-256g-160c9+**flip** | - / - | **86.6 / 87.1**
+650c11-256g-160c9 | 74.6 / 76.1 | - / -
+650c11-256g-160c9+**flip** | 77.1 / 78.2 | **86.6 / 87.1**
 
 Approximate total (training+prediction) time for 1 test. We also report prediction time (required to process and 
 classify all 10k test samples), which is more relevant in practice. 
@@ -85,18 +86,28 @@ Model | CIFAR-10 (400) | CIFAR-10 | CIFAR-10 (prediction)
 420c13-128g-160c11+flip | 16 min / 17 min | 45 min / 80 min | 3 min / 3.5 min
 675c13-256g-160c11 | 21.5 min / 22 min | 50 min / 65 min | 5 min / 5.5 min
 675c13-256g-160c11+flip | 24 min / 25 min | 80 min / 110 min | 5.5 min / 6 min
-650c11-256g-160c9+**flip** | - / - | 55 min / 90 min | 7 min / 8 min
+650c11-256g-160c9 | 19 min / 19.5 min | - / - | - / -
+650c11-256g-160c9+**flip** | 24 min / 25 min | 55 min / 90 min | 7 min / 8 min
+
+### CIFAR-100
+All model settings are identical to CIFAR-10
+
+Model | CIFAR-100
+-------|:--------:
+650c11-256g-160c9 | - / - 
+650c11-256g-160c9+**flip** | - / - 
+
 
 ### STL-10
 
 Average test accuracy (%) on STL-10 using 10 predefined folds. SVM committees consist of 16 models in case of 1 layer 
-and 20 models in case of 2 layers (see code for details). 
+and 19 models in case of 2 layers (see code for details). 
 
 Model | STL-10
 -------|:--------:
 1024c29 | 60.0 / 62.8
 1024c29+**flip** | 64.1 / 66.1
 420c21-128g-160c13 | 66.0 / 69.0
-420c21-128g-160c13+**flip**  | 69.8 / 71.7
-675c21-256g-160c13 | 66.1 / 69.0
-675c21-256g-160c13+**flip**  | 70.6 / 72.1
+420c21-128g-160c13+**flip**  | 69.8 / 71.8
+675c21-256g-160c13 | 66.1 / 69.1
+675c21-256g-160c13+**flip**  | **70.6 / 72.3**
