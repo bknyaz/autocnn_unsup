@@ -104,6 +104,7 @@ Our SVM committee is several times cheaper computationally compared to a more tr
 
 ### Learned filters
 
+Filters and connections are learned with architecture opts.arch = '256c11-2p-conv0_3__64g-3ch-128c9-4p-conv2_3'.
 Filters are sorted according to their joint spatial and frequency resolution.
 
 256 filters learned with k-means and conv_orders = [0:4] in layer 1
