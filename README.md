@@ -119,14 +119,15 @@ Model                       | CIFAR-10 (400)        | CIFAR-10              | CI
 Our SVM committee is several times cheaper computationally compared to a more traditional form of a committee 
 (i.e., when a model is trained from scratch several times).
 
+
 ##### Learned filters
 
-Filters and connections are learned with architecture opts.arch = '256c11-2p-conv0_3__64g-3ch-128c9-4p-conv2_3'.
+Filters and connections are learned with architecture `opts.arch = '256c11-2p-conv0_3__64g-3ch-128c9-4p-conv2_3'`.
 Filters are sorted according to their joint spatial and frequency resolution.
 
-256 filters learned with k-means and conv_orders = [0:4] in layer 1
-256 filters learned with k-means and conv_orders = [0:4] in layer 1, 
-l2-normalization is applied before k-means
+256 filters learned with k-means and conv_orders = [0:4] in layer 1 (*left*);
+
+same, buth with l2-normalization is applied before k-means (*right*)
 
 ![conv0_4_layer1_kmeans_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv0_4_layer1_kmeans_cifar10.png)
 ![conv0_4_layer1_kmeans_l2_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv0_4_layer1_kmeans_l2_cifar10.png)
@@ -135,13 +136,11 @@ l2-normalization is applied before k-means
 
 ![connections_layer1_2_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/connections_layer1_2_cifar10.png)
 
-128 filters learned with k-means and conv_orders = [2:3] in layer 2 in case of 3 channels per feature map group
+128 filters learned with k-means and conv_orders = [2:3] in layer 2 in case of 3 channels per feature map group (*left*);
+
+same, buth with l2-normalization is applied before k-means (*right*)
 
 ![conv2_3_layer2_kmeans_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv2_3_layer2_kmeans_cifar10.png)
-
-128 filters learned with k-means and conv_orders = [2:3] in layer 2 in case of 3 channels per feature map group, 
-l2-normalization is applied before k-means
-
 ![conv2_3_layer2_kmeans_l2_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv2_3_layer2_kmeans_l2_cifar10.png)
 
 ### CIFAR-100
@@ -174,5 +173,3 @@ Full definitions of architectures are following:
 1 layer: `1024c29-20p-conv0_4`
 
 2 layers: `1024c21-4p-conv0_4__Ng-4ch-160c13-8p-conv2_3`
-
-
