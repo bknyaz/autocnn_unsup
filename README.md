@@ -16,8 +16,9 @@ opts.gtsvm = '/home/code/3rd_party/gtsvm/mex';
 opts.n_folds = 10;
 opts.n_train = 4000;
 opts.arch = '1024c11-2p-conv0_4__128g-4ch-160c9-4p-conv2_3';
-autocnn_cifar10(opts, 'augment', true)
+autocnn_cifar(opts, 'augment', true)
 ```
+This scripts should obtain an average accuracy of about 77.4% on CIFAR-10 (400).
 
 ## Requirements
 For faster filters learning it's recommended to use [VLFeat] (http://www.vlfeat.org/), and for faster forward 
@@ -54,19 +55,27 @@ We use VLFeat's k-means to obtain our results.
 (the test set is not augmented).
 - **flip** - indicates that flipping is applied both for training and test samples.
 - We report 2 results (in table cells): with a single SVM / SVM committee.
+- For 2 layers, an average number of filters used after prunning is indicated in layer 1 
+(i.e., 90 instead of 192, or 675 instead of 1024), see the paper for details.
 
 ### MNIST
 Test error (%) on MNIST (100), MNIST (300) with 100 or 300 labeled images per class, and using all (60k) MNIST 
-training data. 
+training data (full test).
 In both cases we report average % for 10 random tests. 
 SVM committees consist of 8 models in case of 1 layer and 11 models in case of 2 layers (see code for details). 
 In our paper, the results on MNIST were obtained using LIBSVM. Here, we use GTSVM.
 
-Model           | MNIST (100)   |MNIST (300)    | MNIST
--------         |:--------:     |:--------:     |:--------:
-256c13          | - / -         | - / -         | - / -
-192c11-32g-64c9 | - / -         | - / 0.96         | - / -
+Model           | MNIST (100)   |MNIST (300)    | MNIST         | MNIST (total time for 1 full test)
+-------         |:--------:     |:--------:     |:--------:     |:--------:
+256c13          | 2.15 / 2.00   | 1.41 / 1.31   | 0.46 / 0.45   | 1 min / 2 min
+90c11-32g-64c9  | 1.51 / 1.49   | 1.02 / 0.96   | 0.39 / 0.40   | 7 min / 10 min
 
+For MNIST we observe a very large variance of the classification error.
+Among 10 runs on full MNIST, our minimum error with a single SVM (PCA = 300) was 0.35%, with an SVM committee - 0.34%. 
+
+Full definitions of architectures are following:
+1 layer: 256c13-4p-conv1_3
+2 layers: 192c11-2p-conv1_3__32g-3ch-64c9-2p-conv2_3
 
 ### CIFAR-10
 Test accuracy (%) on CIFAR-10 (400) with 400 labeled images per class and using all (50k) CIFAR-10 training data. 
@@ -81,10 +90,14 @@ Model                       | CIFAR-10 (400)    | CIFAR-10
 420c13-128g-160c11+flip     | 75.9 / 77.4       | 85.8 / 86.4
 675c13-256g-160c11          | 74.4 / 75.9       | 84.7 / 85.4
 675c13-256g-160c11+flip     | 76.4 / 77.9       | 86.0 / 86.6
-650c11-256g-160c9           | 74.6 / 76.1       | 84.6 / 85.5
+650c11-256g-160c9           | 74.6 / 76.1       | 84.7 / 85.4
 650c11-256g-160c9+**flip**  | **77.1 / 78.2**   | **86.6 / 87.1**
 
-#### Timings
+Full definitions of architectures are following:
+1 layer: 1024c13-8p-conv0_4
+2 layers: 1024c11-2p-conv0_3__Ng-4ch-160c9-4p-conv2_3
+
+##### Timings
 Approximate total (training+prediction) time for 1 test. 
 We also report prediction time required to process and classify all 10k test samples. 
 
@@ -102,7 +115,7 @@ Model                       | CIFAR-10 (400)        | CIFAR-10              | CI
 Our SVM committee is several times cheaper computationally compared to a more traditional form of a committee 
 (i.e., when a model is trained from scratch several times).
 
-### Learned filters
+##### Learned filters
 
 Filters and connections are learned with architecture opts.arch = '256c11-2p-conv0_3__64g-3ch-128c9-4p-conv2_3'.
 Filters are sorted according to their joint spatial and frequency resolution.
@@ -134,6 +147,8 @@ All model settings are identical to CIFAR-10.
 
 Model                       | CIFAR-100
 -------|:--------:
+1024c13                     | - / -
+1024c13+**flip**            | - / -
 650c11-256g-160c9           | - / - 
 650c11-256g-160c9+**flip**  | - / - 
 
@@ -143,11 +158,16 @@ Model                       | CIFAR-100
 Average test accuracy (%) on STL-10 using 10 predefined folds. 
 SVM committees consist of 16 models in case of 1 layer and 19 models in case of 2 layers (see code for details). 
 
-Model                           | STL-10
+Model                           | STL-10            | STL-10 (total time for 10 folds)
 -------|:--------:
-1024c29                         | 60.0 / 62.8
-1024c29+**flip**                | 64.1 / 66.1
-420c21-128g-160c13              | 66.0 / 69.0
-420c21-128g-160c13+**flip**     | 69.8 / 71.8
-675c21-256g-160c13              | 66.1 / 69.1
-675c21-256g-160c13+**flip**     | **70.6 / 72.3**
+1024c29                         | 60.0 / 62.8       | 32 min / 34 min
+1024c29+**flip**                | 64.1 / 66.1       | 43 min / 46 min
+420c21-128g-160c13              | 66.0 / 69.0       | 46 min / 49 min
+420c21-128g-160c13+**flip**     | 69.8 / 71.8       | 50 min / 60 min
+675c21-256g-160c13              | 66.1 / 69.1       | 64 min / 65 min
+675c21-256g-160c13+**flip**     | **70.6 / 72.3**   | 80 min / 90 min
+
+Full definitions of architectures are following:
+1 layer: 1024c29-20p-conv0_4
+2 layers: 1024c21-4p-conv0_4__Ng-4ch-160c13-8p-conv2_3
+

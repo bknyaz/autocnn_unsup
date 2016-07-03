@@ -24,7 +24,9 @@ else
 end
 train_ids = train_ids(randperm(length(train_ids)));
 n = min([1000,size(data_train.unlabeled_images,1),length(train_ids)]);
-if (size(data_train.unlabeled_images,1) == length(train_ids) && ...
+data_train.images = data_train.images(train_ids,:);
+data_train.labels = data_train.labels(train_ids);
+if (size(data_train.unlabeled_images,1) == length(train_ids) && size(data_train.unlabeled_images,1) <= max(train_ids) && ... 
         norm(data_train.images(1:n,:)-data_train.unlabeled_images(1:n,:)) < 1e-5)
     unlabeled_ids = train_ids;
 else
@@ -32,8 +34,6 @@ else
     unlabeled_ids = 1:size(data_train.unlabeled_images,1);
     unlabeled_ids = unlabeled_ids(randperm(length(unlabeled_ids)));
 end
-data_train.images = data_train.images(train_ids,:);
-data_train.labels = data_train.labels(train_ids);
 data_train.unlabeled_images = data_train.unlabeled_images(unlabeled_ids,:);
 data_train.unlabeled_images_whitened = data_train.unlabeled_images_whitened(unlabeled_ids,:);
 
