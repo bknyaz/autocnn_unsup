@@ -73,6 +73,9 @@ for layer_id = 1:n_layers
             floor(net.layers{layer_id}.filter_size(1:2)./2),0,'post');
     end
 
+    if (net.layers{layer_id}.complex_filters)
+        net.layers{layer_id}.filters = hilbert_5d(net.layers{layer_id}.filters);
+    end
     net.layers{layer_id}.filters = norm_5d(net.layers{layer_id}.filters); % normalize filters [and send them to a GPU]
     if (net.layers{layer_id}.gpu)
         net.layers{layer_id}.filters = gpuArray(net.layers{layer_id}.filters);
@@ -335,14 +338,6 @@ end
 for k=1:size(fmaps_out,1), fmaps_out{k,1} = cat(3,fmaps_out{k,:}); end % 4d array: rows x cols x sz_filters(4)*opts.n_groups x n_samples
 fmaps_out = fmaps_out(:,1);
 fmaps_out(cellfun(@isempty,fmaps_out)) = [];
-% if (opts.n_groups > 1)
-%     fmaps_out{1} = reshape(fmaps_out{1}, [size(fmaps_out{1},1), size(fmaps_out{1},2), opts.n_filters, opts.n_groups, n_samples]);
-%     fmaps_out{1} = fft(fft(fmaps_out{1},[],3),[],4);
-%     fmaps_out{1}(abs(fmaps_out{1}) < 50) = 0;
-%     fmaps_out{1}(abs(fmaps_out{1}) > 65e3) = 65e3;
-%     fmaps_out{1} = real(ifft(ifft(fmaps_out{1},[],3),[],4));
-%     fmaps_out{1} = reshape(fmaps_out{1}, [size(fmaps_out{1},1), size(fmaps_out{1},2), opts.n_filters*opts.n_groups, n_samples]);
-% end
 if (isempty(opts.stats))
     stats{1}.output_size = cellfun(@size,fmaps_out,'UniformOutput',false);
 end
@@ -439,11 +434,22 @@ end
 function filters = norm_5d(filters)
 for group=1:size(filters,5)
     for k=1:size(filters,4)
-      f = filters(:,:,:,k,group);
-      if (std(f(:)) < 1e-10)
-        error('filter might be blank')
-      end
+        f = filters(:,:,:,k,group);
+        if (std(f(:)) < 1e-10)
+            error('filter might be blank')
+        end
         filters(:,:,:,k,group) = f./norm(f(:));
+    end
+end
+
+end
+
+% Hilbert transform to filters
+function filters = hilbert_5d(filters)
+for group=1:size(filters,5)
+    for k=1:size(filters,4)
+        f = filters(:,:,:,k,group);
+        filters(:,:,:,k,group) = reshape(hilbert(f(:)),size(f));
     end
 end
 
@@ -512,6 +518,9 @@ if (opts.multidict)
 end
 if (~isfield(opts,'stats'))
     opts.stats = []; % statistical data of batches
+end
+if (~isfield(opts,'complex_filters'))
+    opts.complex_filters = false; % complex valued filters
 end
 if (~isfield(opts,'flip'))
     opts.flip = false; % true to flip input images horizontally
