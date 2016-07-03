@@ -49,7 +49,7 @@ We use VLFeat's k-means to obtain our results.
 - Xeon CPU E5-2620 v3 @ 2.40GHz
 
 ## Results
-- So far, the model is purely unsupervised, i.e. fine tuning is not applied. 
+- So far, the model is purely unsupervised, i.e., label information is not used to train filters
 - Also, no data augmentation and no cropping is applied, other than horizontal flipping when specified (see Tables below).
 - flip - indicates that flipping (horizontal reflection, mirroring) is applied only for training samples 
 (the test set is not augmented).
@@ -74,8 +74,10 @@ For MNIST we observe a very large variance of the classification error.
 Among 10 runs on full MNIST, our minimum error with a single SVM (PCA = 300) was 0.35%, with an SVM committee - 0.34%. 
 
 Full definitions of architectures are following:
-1 layer: 256c13-4p-conv1_3
-2 layers: 192c11-2p-conv1_3__32g-3ch-64c9-2p-conv2_3
+
+1 layer: `256c13-4p-conv1_3`
+
+2 layers: `192c11-2p-conv1_3__32g-3ch-64c9-2p-conv2_3`
 
 ### CIFAR-10
 Test accuracy (%) on CIFAR-10 (400) with 400 labeled images per class and using all (50k) CIFAR-10 training data. 
@@ -94,8 +96,10 @@ Model                       | CIFAR-10 (400)    | CIFAR-10
 650c11-256g-160c9+**flip**  | **77.1 / 78.2**   | **86.6 / 87.1**
 
 Full definitions of architectures are following:
-1 layer: 1024c13-8p-conv0_4
-2 layers: 1024c11-2p-conv0_3__Ng-4ch-160c9-4p-conv2_3
+
+1 layer: `1024c13-8p-conv0_4`
+
+2 layers: `1024c11-2p-conv0_3__Ng-4ch-160c9-4p-conv2_3`
 
 ##### Timings
 Approximate total (training+prediction) time for 1 test. 
@@ -121,12 +125,10 @@ Filters and connections are learned with architecture opts.arch = '256c11-2p-con
 Filters are sorted according to their joint spatial and frequency resolution.
 
 256 filters learned with k-means and conv_orders = [0:4] in layer 1
-
-![conv0_4_layer1_kmeans_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv0_4_layer1_kmeans_cifar10.png)
-
 256 filters learned with k-means and conv_orders = [0:4] in layer 1, 
 l2-normalization is applied before k-means
 
+![conv0_4_layer1_kmeans_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv0_4_layer1_kmeans_cifar10.png)
 ![conv0_4_layer1_kmeans_l2_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv0_4_layer1_kmeans_l2_cifar10.png)
 
 64 connections from layer 1 to layer 2 visualized as the filters of layer 1 connected into 64 groups of 3
@@ -168,6 +170,9 @@ Model                           | STL-10            | STL-10 (total time for 10 
 675c21-256g-160c13+**flip**     | **70.6 / 72.3**   | 80 min / 90 min
 
 Full definitions of architectures are following:
-1 layer: 1024c29-20p-conv0_4
-2 layers: 1024c21-4p-conv0_4__Ng-4ch-160c13-8p-conv2_3
+
+1 layer: `1024c29-20p-conv0_4`
+
+2 layers: `1024c21-4p-conv0_4__Ng-4ch-160c13-8p-conv2_3`
+
 
