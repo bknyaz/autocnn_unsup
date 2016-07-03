@@ -18,7 +18,7 @@ opts.n_train = 4000;
 opts.arch = '1024c11-2p-conv0_4__128g-4ch-160c9-4p-conv2_3';
 autocnn_cifar(opts, 'augment', true)
 ```
-This scripts should obtain an average accuracy of about 77.4% on CIFAR-10 (400).
+This script should obtain an average accuracy of about 77.4% on CIFAR-10 (400).
 
 ## Requirements
 For faster filters learning it's recommended to use [VLFeat] (http://www.vlfeat.org/), and for faster forward 
@@ -144,12 +144,14 @@ same, buth with l2-norm before k-means (*right*)
 ### CIFAR-100
 All model settings are identical to CIFAR-10.
 
-Model                       | CIFAR-100
--------|:--------:
-1024c13                     | - / -
-1024c13+**flip**            | - / -
-650c11-256g-160c9           | - / - 
-650c11-256g-160c9+**flip**  | - / - 
+Results will be updated soon.
+
+Model                       | CIFAR-100     | CIFAR-100 (total time for 1 full test)
+-------|:--------:|:--------:
+1024c13                     | ~56.5 / ~59.0 |
+1024c13+**flip**            | - / -         |
+650c11-256g-160c9           | - / -         |
+650c11-256g-160c9+**flip**  | - / -         |
 
 
 ### STL-10
