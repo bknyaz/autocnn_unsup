@@ -126,8 +126,7 @@ Filters and connections are learned with architecture `opts.arch = '256c11-2p-co
 Filters are sorted according to their joint spatial and frequency resolution.
 
 256 filters learned with k-means and conv_orders = [0:4] in layer 1 (*left*);
-
-same, buth with l2-normalization is applied before k-means (*right*)
+same, buth with l2-norm before k-means (*right*)
 
 ![conv0_4_layer1_kmeans_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv0_4_layer1_kmeans_cifar10.png)
 ![conv0_4_layer1_kmeans_l2_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv0_4_layer1_kmeans_l2_cifar10.png)
@@ -137,8 +136,7 @@ same, buth with l2-normalization is applied before k-means (*right*)
 ![connections_layer1_2_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/connections_layer1_2_cifar10.png)
 
 128 filters learned with k-means and conv_orders = [2:3] in layer 2 in case of 3 channels per feature map group (*left*);
-
-same, buth with l2-normalization is applied before k-means (*right*)
+same, buth with l2-norm before k-means (*right*)
 
 ![conv2_3_layer2_kmeans_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv2_3_layer2_kmeans_cifar10.png)
 ![conv2_3_layer2_kmeans_l2_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv2_3_layer2_kmeans_l2_cifar10.png)
