@@ -1,4 +1,4 @@
-function im = imsetshow(images)
+function im = imsetshow(images, m, n)
 % Returns and shows a set of images: 4D array (rows x cols x colors x n_images)
 
 if (iscell(images))
@@ -16,8 +16,12 @@ elseif (length(sz) < 4)
     end
 end
 s = sqrt(sz(4));
-m = round(s);
-n = ceil(s);
+if (~exist('m','var') || isempty(m))
+    m = round(s);
+end
+if (~exist('n','var') || isempty(n))
+    n = ceil(s);
+end
 im = zeros(m*sz(2),n*sz(1),sz(3));
 for i=1:sz(4)
     [k1,k2] = ind2sub([m,n],i);
@@ -25,5 +29,8 @@ for i=1:sz(4)
 end
 im = mat2gray(im);
 imshow(im);
+if (nargout == 0)
+    clear im
+end
 
 end
