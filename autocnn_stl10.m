@@ -38,7 +38,7 @@ if (~isfield(opts,'conv_norm'))
     opts.conv_norm = 'rootsift';
 end
 if (~isfield(opts,'arch'))
-    opts.arch = '1024c21-4p-conv0_4__128g-4ch-160c13-6p-conv2_3'; % define a large 2 layer architecture
+    opts.arch = '1024c21-4p-conv0_4__128g-4ch-160c13-8p-conv2_3'; % define a large 2 layer architecture
 end
 sample_size = [96,96,3];
 opts.net_init_fn = @() net_init(opts.arch, opts, 'sample_size', sample_size, varargin{:});
