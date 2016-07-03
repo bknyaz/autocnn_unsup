@@ -159,7 +159,7 @@ Average test accuracy (%) on STL-10 using 10 predefined folds.
 SVM committees consist of 16 models in case of 1 layer and 19 models in case of 2 layers (see code for details). 
 
 Model                           | STL-10            | STL-10 (total time for 10 folds)
--------|:--------:
+-------|:--------:|:--------:
 1024c29                         | 60.0 / 62.8       | 32 min / 34 min
 1024c29+**flip**                | 64.1 / 66.1       | 43 min / 46 min
 420c21-128g-160c13              | 66.0 / 69.0       | 46 min / 49 min
