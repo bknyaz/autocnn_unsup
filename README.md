@@ -120,7 +120,7 @@ Our SVM committee is several times cheaper computationally compared to a more tr
 (i.e., when a model is trained from scratch several times).
 
 
-##### Learned filters
+##### Learned filters and connections
 
 Filters and connections are learned with architecture `opts.arch = '256c11-2p-conv0_3__64g-3ch-128c9-4p-conv2_3'`.
 Filters are sorted according to their joint spatial and frequency resolution.
@@ -148,8 +148,8 @@ Results will be updated soon.
 
 Model                       | CIFAR-100     | CIFAR-100 (total time for 1 full test)
 -------|:--------:|:--------:
-1024c13                     | ~56.5 / ~59.0 |
-1024c13+**flip**            | - / -         |
+1024c13                     | 56.5 / 59.6   | 10 min / 75 min
+1024c13+**flip**            | 60.2 / 62.7   | 14 min / 120 min
 650c11-256g-160c9           | - / -         |
 650c11-256g-160c9+**flip**  | - / -         |
 
