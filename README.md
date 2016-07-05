@@ -6,7 +6,7 @@ on unsupervised layer-wise training of a convolution neural network based on rec
 We present scripts for MNIST ([autocnn_mnist.m] (autocnn_mnist.m)), CIFAR-10 (CIFAR-100) ([autocnn_cifar.m] (autocnn_cifar.m)) 
 and STL-10 ([autocnn_stl10.m] (autocnn_stl10.m)). 
 Our slighly optimized scripts are much faster (see Tables below) than those used to produce results in the paper. 
-Moreover, the classification results are also surprisingly improved.
+Moreover, the classification results are also a little bit improved.
 
 ## Example of running
 ```matlab
@@ -15,10 +15,10 @@ opts.vlfeat = 'home/code/3rd_party/vlfeat/toolbox/mex/mexa64';
 opts.gtsvm = '/home/code/3rd_party/gtsvm/mex';
 opts.n_folds = 10;
 opts.n_train = 4000;
-opts.arch = '1024c11-2p-conv0_4__128g-4ch-160c9-4p-conv2_3';
+opts.arch = '1024c11-2p-conv0_4__256g-4ch-160c9-4p-conv2_3';
 autocnn_cifar(opts, 'augment', true)
 ```
-This script should obtain an average accuracy of about 77.4% on CIFAR-10 (400).
+This script should obtain an average accuracy of about 78.2% on CIFAR-10 (400).
 
 ## Requirements
 For faster filters learning it's recommended to use [VLFeat] (http://www.vlfeat.org/), and for faster forward 
@@ -59,9 +59,8 @@ We use VLFeat's k-means to obtain our results.
 (i.e., 90 instead of 192, or 675 instead of 1024), see the paper for details.
 
 ### MNIST
-Test error (%) on MNIST (100), MNIST (300) with 100 or 300 labeled images per class, and using all (60k) MNIST 
-training data (full test).
-In both cases we report average % for 10 random tests. 
+Test error (%) on MNIST (100), MNIST (300) with 100 or 300 labeled images per class, and using all (60k) MNIST training data (full test).
+In both cases we report average % for 10 tests.
 SVM committees consist of 8 models in case of 1 layer and 11 models in case of 2 layers (see code for details). 
 In our paper, the results on MNIST were obtained using LIBSVM. Here, we use GTSVM.
 
@@ -81,7 +80,7 @@ Full definitions of architectures are following:
 
 ### CIFAR-10
 Test accuracy (%) on CIFAR-10 (400) with 400 labeled images per class and using all (50k) CIFAR-10 training data. 
-In both cases we report average % for 10 random tests. 
+In both cases we report average % for 10 tests. 
 SVM committees consist of 12 models in case of 1 layer and 16 models in case of 2 layers (see code for details).
 
 Model                       | CIFAR-10 (400)    | CIFAR-10
@@ -142,21 +141,25 @@ same, buth with l2-norm before k-means (*right*)
 ![conv2_3_layer2_kmeans_l2_cifar10](https://raw.githubusercontent.com/bknyaz/autocnn_unsup/master/figs/conv2_3_layer2_kmeans_l2_cifar10.png)
 
 ### CIFAR-100
+Average test accuracy (%) on CIFAR-100 for 10 tests.
 All model settings are identical to CIFAR-10.
 
 Results will be updated soon.
 
-Model                       | CIFAR-100     | CIFAR-100 (total time for 1 full test)
+Model                       | CIFAR-100     			| CIFAR-100 (total time for 1 full test)
 -------|:--------:|:--------:
-1024c13                     | 56.5 / 59.6   | 10 min / 75 min
-1024c13+**flip**            | 60.2 / 62.7   | 14 min / 120 min
-650c11-256g-160c9           | - / -         |
-650c11-256g-160c9+**flip**  | - / -         |
+1024c13                     | 56.5 / 59.6               | 10 min / 75 min
+1024c13+**flip**            | 60.3 / 62.7   			| 14 min / 120 min
+650c11-128g-160c9           | 60.8 / 63.4 (1 test)      | 27 min / 120 min
+650c11-128g-160c9+**flip**  | 65.0 / 66.2 (1 test)		| - min / 180 min
+650c11-256g-160c9           | 61.6 / 63.3 (1 test)		| 42 min / 130 min
+650c11-256g-160c9+**flip**  | 65.5 / 66.4 (1 test) 		| 66 min / 220 min
+
 
 
 ### STL-10
 
-Average test accuracy (%) on STL-10 using 10 predefined folds. 
+Average test accuracy (%) on STL-10 using 10 predefined folds.
 SVM committees consist of 16 models in case of 1 layer and 19 models in case of 2 layers (see code for details). 
 
 Model                           | STL-10            | STL-10 (total time for 10 folds)
