@@ -70,7 +70,7 @@ Model           | MNIST (100)   |MNIST (300)    | MNIST         | MNIST (total t
 90c11-32g-64c9  | 1.51 / 1.49   | 1.02 / 0.96   | 0.39 / 0.40   | 7 min / 10 min
 
 For MNIST we observe a very large variance of the classification error.
-Among 10 runs on full MNIST, our minimum error with a single SVM (PCA = 300) was 0.35%, with an SVM committee - 0.34%. 
+Among 10 runs on full MNIST, our minimum error with a single SVM (PCA = 300) was **0.35%**, with an SVM committee - **0.34%**. 
 
 Full definitions of architectures are following:
 
@@ -144,16 +144,14 @@ same, buth with l2-norm before k-means (*right*)
 Average test accuracy (%) on CIFAR-100 for 10 tests.
 All model settings are identical to CIFAR-10.
 
-Results will be updated soon.
-
 Model                       | CIFAR-100     			| CIFAR-100 (total time for 1 full test)
 -------|:--------:|:--------:
 1024c13                     | 56.5 / 59.6               | 10 min / 75 min
 1024c13+**flip**            | 60.3 / 62.7   			| 14 min / 120 min
 650c11-128g-160c9           | 60.8 / 63.4 (1 test)      | 27 min / 120 min
-650c11-128g-160c9+**flip**  | 65.0 / 66.2 (1 test)		| - min / 180 min
+650c11-128g-160c9+**flip**  | 65.2 / 65.8 (1 test)		| 41 min / 195 min
 650c11-256g-160c9           | 61.6 / 63.3 (1 test)		| 42 min / 130 min
-650c11-256g-160c9+**flip**  | 65.5 / 66.4 (1 test) 		| 66 min / 220 min
+650c11-256g-160c9+**flip**  | **65.5 / 66.4** (1 test)  | 66 min / 220 min
 
 
 
