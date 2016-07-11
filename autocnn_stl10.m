@@ -26,7 +26,7 @@ if (~isfield(opts,'whiten'))
     opts.whiten = true; % whitening is applied
 end
 if (~isfield(opts,'batch_size'))
-    opts.batch_size = 100;
+    opts.batch_size = 25;
 end
 if (~isfield(opts,'rectifier_param'))
     opts.rectifier_param = [0.25,25];
@@ -60,7 +60,7 @@ end
 
 net = opts.net_init_fn(); % initialize a network
 % PCA dimensionalities (p_j) for the SVM committee
-if (~isfield(opts,'PCA_dim'))
+if (~isfield(opts,'PCA_dim') || isempty(opts.PCA_dim))
     if (numel(net.layers) > 1)
         opts.PCA_dim = [40,70,80,120,150,250,300:100:1500];
     else

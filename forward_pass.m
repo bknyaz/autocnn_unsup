@@ -53,6 +53,8 @@ for layer_id = 1:n_layers
     if (~isfield(net.layers{layer_id},'lcn'))
         % for the last layer local contrast normalization is not useful
         net.layers{layer_id}.lcn = layer_id < n_layers;
+    else
+        if (layer_id == n_layers), net.layers{layer_id}.lcn = false; end % override the value
     end
     
     if (~isfield(net.layers{layer_id},'conv_pad'))
@@ -148,9 +150,9 @@ for batch_id = 1:n_batches
         end
         % process a single batch with an AutoCNN
         [features, stats{layer_id}{batch_id}] = forward_pass_batch(features, net.layers{layer_id}.filters, net.layers{layer_id});
-        % apply feature normalization for each sample
-        if (~isempty(net.layers{layer_id}.norm))
-            for k=1:numel(features), features{k} = feature_scaling(features{k}, net.layers{layer_id}.norm); end
+        % apply feature normalization for each sample (except for the last layer)
+        if (~isempty(net.layers{layer_id}.norm) && layer_id < n_layers)
+            features{1} = feature_scaling(features{1}, net.layers{layer_id}.norm);
         end
         if (net.layers{layer_id}.multidict)
             fmaps_out_batch(:,sum(feature_length(1:layer_id))+1:sum(feature_length(1:layer_id+1))) = gather(features{2});
@@ -158,11 +160,9 @@ for batch_id = 1:n_batches
         features = features{1};
     end
     fmaps_out_batch(:,1:feature_length(1)) = gather(features);
-    if (net.layers{1}.multidict)
-        % normalize concatenated features
-        if (~isempty(net.layers{layer_id}.norm))
-            fmaps_out_batch = feature_scaling(fmaps_out_batch, net.layers{layer_id}.norm);
-        end
+    % normalize concatenated features
+    if (~isempty(net.layers{layer_id}.norm))
+        fmaps_out_batch = feature_scaling(fmaps_out_batch, net.layers{layer_id}.norm);
     end
     
     % Dimension reduction (optional)
@@ -510,11 +510,9 @@ end
 if (~isfield(opts,'multidict'))
     opts.multidict = true; % true to use feature maps of all layers
 end
-if (opts.multidict)
-    if (~isfield(opts,'pruned'))
-        % only feature maps connected to the next layer are used as multidictionary features
-        opts.pruned = true;
-    end
+if (~isfield(opts,'pruned'))
+    % only feature maps connected to the next layer are used as multidictionary features
+    opts.pruned = true;
 end
 if (~isfield(opts,'stats'))
     opts.stats = []; % statistical data of batches

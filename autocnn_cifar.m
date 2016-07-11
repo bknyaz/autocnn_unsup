@@ -68,11 +68,19 @@ end
 
 net = opts.net_init_fn();
 % PCA dimensionalities (p_j) for the SVM committee
-if (~isfield(opts,'PCA_dim'))
+if (~isfield(opts,'PCA_dim')  || isempty(opts.PCA_dim))
     if (numel(net.layers) > 1)
         opts.PCA_dim = [50:25:150,200:50:400,500:100:1000];
+        if (opts.n_train >= 50e3)
+            opts.PCA_dim = [opts.PCA_dim,1100:100:1500];
+        end
     else
-        opts.PCA_dim = [50:25:150,200:50:400,500,600];
+        opts.PCA_dim = [50:25:150,200:50:350];
+        if (opts.n_train >= 50e3)
+            opts.PCA_dim = [opts.PCA_dim,400:100:600];
+        elseif (net.layers{1}.augment)
+            opts.PCA_dim = [opts.PCA_dim,400,500];
+        end
     end
 end
 
@@ -164,7 +172,11 @@ else
 end
 
 % we use the first 4k-10k samples as unlabeled data, it's enough to learn filters and connections and perform PCA
-unlabeled_ids = 1:4e3;
+if (opts.n_train >= 50e3)
+    unlabeled_ids = 1:4e3;
+else
+    unlabeled_ids = 1:10e3;
+end
 data_train.unlabeled_images = data_train.unlabeled_images(unlabeled_ids,:);
 data_train.unlabeled_images_whitened = data_train.images(unlabeled_ids,:);
 

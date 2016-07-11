@@ -26,8 +26,7 @@ train_ids = train_ids(randperm(length(train_ids)));
 n = min([1000,size(data_train.unlabeled_images,1),length(train_ids)]);
 data_train.images = data_train.images(train_ids,:);
 data_train.labels = data_train.labels(train_ids);
-if (size(data_train.unlabeled_images,1) == length(train_ids) && size(data_train.unlabeled_images,1) <= max(train_ids) && ... 
-        norm(data_train.images(1:n,:)-data_train.unlabeled_images(1:n,:)) < 1e-5)
+if (isfield(opts,'fix_unlabeled') && opts.fix_unlabeled)
     unlabeled_ids = train_ids;
 else
     % unlabeled images are independent
@@ -95,7 +94,7 @@ for layer_id=1:numel(net.layers), net.layers{layer_id}.stats = []; net.layers{la
 fprintf('\n-> processing %s samples \n', upper('training (unlabeled)'))
 [train_features, stats] = forward_pass(data_train.unlabeled_images_whitened, net);
 opts.PCA_dim(opts.PCA_dim > size(train_features,2)) = [];
-
+    
 %% Dimension reduction (PCA) for groups of feature maps
 opts.pca_mode = 'pcawhiten';
 if (~isfield(opts,'pca_fast') || isempty(opts.pca_fast))
@@ -160,6 +159,7 @@ if (net.layers{1}.augment)
         fprintf('\n-> processing %s samples \n', upper('test (augmented)'))
         test_features = cat(1,test_features,forward_pass(data_test.images, net));
     end
+    net.layers{1}.flip = false;
 else
     train_labels = data_train.labels;
 end
@@ -216,6 +216,8 @@ try
             test_results.predicted_labels = {test_results.predicted_labels};
             test_results.net = {net};
         end
+    else
+        test_results.net = net;
     end
     save(test_file_name,'-struct','test_results','-v7.3')
 catch e 

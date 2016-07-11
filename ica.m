@@ -77,13 +77,17 @@ N = size(X,2);
 % Initialize the random number generator.
 rand('seed',p.seed);
 
-% Take random initial vectors...
-if strcmp(p.model,'ica')
-  B = randn(size(X,1),p.components);      
-elseif strcmp(p.model,'isa')
-  B = randn(size(X,1),p.groupsize*p.groups);    
-elseif strcmp(p.model,'tica')
-  B = randn(size(X,1),p.xdim*p.ydim);  
+if (~isfield(p,'B') || isempty(p.B))
+    % Take random initial vectors...
+    if strcmp(p.model,'ica')
+      B = randn(size(X,1),p.components);      
+    elseif strcmp(p.model,'isa')
+      B = randn(size(X,1),p.groupsize*p.groups);    
+    elseif strcmp(p.model,'tica')
+      B = randn(size(X,1),p.xdim*p.ydim);  
+    end
+else
+    B = p.B;
 end
 if (p.gpu)
     B = gpuArray(B);
@@ -268,6 +272,7 @@ while iter < p.iter_max
   if rem(iter,p.write)==0 | iter==1
     
     A = dewhiteningMatrix * B;
+    figure(1),imsetshow(imresize(reshape(gather(A),[13,13,3,500]),3),20,25); drawnow
     W = B' * whiteningMatrix;
      
 %     fprintf(['Writing file: ' fname '...']);

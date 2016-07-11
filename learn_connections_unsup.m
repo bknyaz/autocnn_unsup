@@ -19,7 +19,7 @@ else
 
     % reshape features
     feature_maps = reshape(feature_maps,[size(feature_maps,1),opts.sample_size]);
-    feature_maps = reshape(feature_maps,[size(feature_maps,1)*prod(opts.sample_size(1:2)),opts.sample_size(end)]);
+    feature_maps = reshape(feature_maps,[size(feature_maps,1)*prod(opts.sample_size(1:3)),prod(opts.sample_size(4:end))]);
     feature_maps = feature_maps(randperm(size(feature_maps,1),min(size(feature_maps,1),10^5)),:);
     feature_maps = feature_scaling(feature_maps, 'gray'); % normalize feature maps in range [0,1]
     feature_maps = pca_zca_whiten(feature_maps, opts); % whiten feature maps

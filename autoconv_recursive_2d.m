@@ -53,7 +53,9 @@ else
 end
 sz = size(X);
 X = padarray(X, sz(1:2)-1, 'post'); % zero-padding to compute linear convolution
-X = ifft2(fft2(X).^2); % autoconvolution in the frequency domain 
+% rand_pow = reshape(2 + rand(1,size(X,4))*0.4 - 0.2,1,1,1,[]);
+% X = ifft2(bsxfun(@power,fft2(X),rand_pow)); % autoconvolution in the frequency domain 
+X = ifft2(fft2(X).^2);
 end
 
 function y = change_range(y, y_min, y_max, norm_type)
