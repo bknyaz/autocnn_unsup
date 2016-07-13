@@ -33,7 +33,7 @@ the RBF kernel.
 If neither LIBSVM nor GTSVM is available, the code will use Matlab's [LDA] (http://www.mathworks.com/help/stats/fitcdiscr.html).
 
 ## Learning methods
-Currently, the supported unsupervised learning methods are k-means, [convolutional k-means] (conv_kmeans.m), k-medoids, GMM, [ICA and ISA] (ica.m).
+Currently, the supported unsupervised learning methods are k-means, [convolutional k-means] (conv_kmeans.m), k-medoids, GMM, PCA, [ICA and ISA] (ica.m).
 We use VLFeat's k-means to obtain our results.
 
 ## Testing environment

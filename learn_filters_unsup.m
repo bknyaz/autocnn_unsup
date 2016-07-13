@@ -9,7 +9,7 @@ function [filters, params] = learn_filters_unsup(feature_maps, opts)
 % filter depth (number of channels) is defined by opts.connections (if not specified, equals opts.sample_size(end))
 % params - an array of cells (one cell per group) with vectors of the joint spatial and temporal resolutions for each filter
 %
-% Currently, the supported learning methods are k-means, convolutional k-means, kmedoids, GMM, ICA and ISA
+% Currently, the supported learning methods are k-means, convolutional k-means, kmedoids, GMM, PCA, ICA and ISA
 % It's highly recommended to install VlFeat (http://www.vlfeat.org/) beforehand, 
 % because it tends to be much faster than Matlab implementations
 
@@ -79,7 +79,8 @@ if (~isfield(opts,'filters_whiten'))
     opts.filters_whiten = true; % true to whiten patches before learning
     fprintf('filters_whiten: \t %d \n', opts.filters_whiten)
 end
-opts.filters_whiten = opts.filters_whiten && ~strcmpi(opts.learning_method,'ica') && ~strcmpi(opts.learning_method,'isa');
+opts.filters_whiten = opts.filters_whiten && ~strcmpi(opts.learning_method,'ica') && ~strcmpi(opts.learning_method,'isa') ...
+    && ~strcmpi(opts.learning_method,'pca');
 if (~isfield(opts,'whiten_independ'))
     opts.whiten_independ = false; % true to whiten patches before learning independently for each autoconvolution order
     fprintf('whiten_independ: \t %d \n', opts.whiten_independ)
@@ -128,7 +129,7 @@ patches = cell(length(opts.conv_orders),n_groups);
 n_min_group = ceil(n_min/max(1,opts.shared_filters*n_groups));
 opts.batch_size = min([opts.batch_size, nSamples, n_min_group]);
 for group=1:n_groups
-    fprintf('group: %d/%d, feature maps: %s \n', group, n_groups, num2str(find(connections(group,:))));
+    if (mod(group,min([8,floor(n_groups/2),n_groups])) == 0), fprintf('group: %d/%d, feature maps: %s \n', group, n_groups, num2str(find(connections(group,:)))); end
     n_patches = 0;
     offset = 0;
     patches_batch = zeros(opts.crop_size(1),opts.crop_size(1),nnz(connections(group,:)),opts.batch_size,'single');
@@ -285,6 +286,11 @@ elseif (strcmpi(opts.learning_method,'ica') || strcmpi(opts.learning_method,'isa
     if (ica_p.gpu)
         filters = gather(filters);
     end
+elseif (strcmpi(opts.learning_method,'pca'))
+    opts.pca_dim = opts.n_filters;
+    opts.pca_mode = 'pcawhiten';
+    [~, PCA_matrix, ~, L_regul] = pca_zca_whiten(data, opts);
+    filters = (PCA_matrix*L_regul)';
 elseif (strcmpi(opts.learning_method,'vl_gmm'))
     [filters,~,~] = vl_gmm(data', opts.n_filters);
     filters = filters';
