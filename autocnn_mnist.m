@@ -66,7 +66,7 @@ net = opts.net_init_fn();
 if (~isfield(opts,'PCA_dim') || isempty(opts.PCA_dim))
     if (numel(net.layers) > 1)
         if (opts.n_train >= 60e3)
-            opts.PCA_dim = [50,70,90,100,120,150,200,250,275,300,350,375,400];
+            opts.PCA_dim = [200,250,275,300,350,375,400];
         else
             opts.PCA_dim = [50,70,90,100,120,150:50:400];
         end
