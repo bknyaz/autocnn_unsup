@@ -61,7 +61,7 @@ We have minor fixes in code, so the results are updated according to the current
 ### MNIST
 Test error (%) on MNIST (100), MNIST (300) with 100 or 300 labeled images per class, and using all (60k) MNIST training data (full test).
 In both cases we report average % for 10 tests.
-SVM committees consist of 8-13 models (see code for details). 
+SVM committees consist of 7-11 models (see code for details). 
 In our paper, the results on MNIST were obtained using LIBSVM. Here, we use GTSVM.
 
 Model           | MNIST (100)   |MNIST (300)    | MNIST         | MNIST (total time for 1 full test)
