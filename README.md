@@ -21,16 +21,17 @@ autocnn_cifar(opts, 'augment', true)
 This script should obtain an average accuracy of about 78.5% on CIFAR-10 (400).
 
 ## Requirements
-For faster filters learning it's recommended to use [VLFeat] (http://www.vlfeat.org/), and for faster forward 
+For faster filter learning it's recommended to use [VLFeat] (http://www.vlfeat.org/), and for faster forward 
 pass - [MatConvNet] (http://www.vlfeat.org/matconvnet/). 
 Although, in the scripts we try to make it possible to choose between built-in Matlab and third party implementations.
 
-For classification it's required to install either [GTSVM] (http://ttic.uchicago.edu/~cotter/projects/gtsvm/) 
-or [LIBSVM] (https://github.com/cjlin1/libsvm). Compared to LIBSVM, GTSVM is much faster (because of GPU) and 
+For classification it's required to install either [GTSVM] (http://ttic.uchicago.edu/~cotter/projects/gtsvm/),
+[LIBLINEAR] (https://github.com/cjlin1/liblinear) or [LIBSVM] (https://github.com/cjlin1/libsvm).
+Compared to LIBSVM, GTSVM is much faster (because of GPU) and 
 implements a one-vs-all SVM classifier (which is usually better for datasets like CIFAR-10 and STL-10). 
-[LIBLINEAR] (https://github.com/cjlin1/liblinear) can also be used, but it shows worse performance compared to 
-the RBF kernel.
-If neither LIBSVM nor GTSVM is available, the code will use Matlab's [LDA] (http://www.mathworks.com/help/stats/fitcdiscr.html).
+[LIBLINEAR] (https://github.com/cjlin1/liblinear) shows worse performance compared to the RBF kernel available 
+both in GTSVM and LIBSVM.
+If neither of these is available, the code will use Matlab's [LDA] (http://www.mathworks.com/help/stats/fitcdiscr.html).
 
 ## Learning methods
 Currently, the supported unsupervised learning methods are k-means, [convolutional k-means] (conv_kmeans.m), k-medoids, GMM, PCA, [ICA and ISA] (ica.m).
