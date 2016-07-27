@@ -3,7 +3,7 @@ function [acc,scores,predicted_labels] = classifier_committee(train_data, test_d
 % opts - model and SVM (or LDA) parameters
 % To train SVMs on a GPU GTSVM must be installed: http://ttic.uchicago.edu/~cotter/projects/gtsvm/
 
-J = length(opts.PCA_dim); % the number of SVM (or LDA) models in the committee
+J = max(1,length(opts.PCA_dim)); % the number of SVM (or LDA) models in the committee
 acc = zeros(2,J); % predicting accuracies in %
 scores = cell(1,J); % SVM (or LDA) scores
 predicted_labels = cell(1,J); % test data labels predicted with SVMs (or LDA)
@@ -40,12 +40,16 @@ else
     train_data = double(train_data);
     test_data = double(test_data);
     test_labels_tmp = test_labels;
+    n = size(test_data,1)/length(test_labels);
     if (size(test_data,1) ~= length(test_labels))
-        if (size(test_data,1) == 2*length(test_labels))
-            test_labels_tmp = repmat(test_labels,2,1); % in case of simple data augmentation (flip)
+        if (mod(size(test_data,1),length(test_labels)) == 0 && n > 1)
+            test_labels_tmp = repmat(test_labels,n,1); % in case of simple data augmentation (flip)
         else
             error('not supported mode')
         end
+    end
+    if (strcmpi(opts.classifier,'liblinear'))
+      C = 1;
     end
 end
 
@@ -53,17 +57,28 @@ time_train = 0;
 time_test = 0;
 % train a committee
 for j=1:J
-    p_j = opts.PCA_dim(j);
+    if (isempty(opts.PCA_dim) || opts.PCA_dim(j) == 0)
+      p_j = size(train_data,2);
+    else
+      p_j = opts.PCA_dim(j);
+    end
     tic;
     fprintf('%d/%d, SVM model for PCA dim (p_j) = %d \n', j, J, p_j)
     fprintf('- using a %s: training...', upper(proc))
     % normalize features
-    train_data_dim = feature_scaling(train_data(:,1:p_j), opts.norm);
+    train_data_dim = train_data(:,1:p_j);
+    if (~isempty(opts.norm))
+      train_data_dim = feature_scaling(train_data_dim, opts.norm);
+    end
     if (strcmpi(opts.classifier,'gtsvm'))
         context.initialize(train_data_dim, train_labels, true, C, 'gaussian', 1/(size(train_data_dim,2)), 0, 0, false);
         context.optimize( 0.01, 1000000 );
     elseif (strcmpi(opts.classifier,'libsvm'))
         model = svmtrain(train_labels, train_data_dim, sprintf('-t %d -q -c %f', kernel, C));
+        predict_fn = @svmpredict;
+    elseif (strcmpi(opts.classifier,'liblinear'))
+        model = train(train_labels, sparse(train_data_dim), sprintf('-s 1 -q -c %f', C));
+        predict_fn = @predict;
     elseif (strcmpi(opts.classifier,'lda'))
         model = fitcdiscr(train_data_dim, train_labels, 'SaveMemory','on');
     else
@@ -72,11 +87,18 @@ for j=1:J
     time_train = time_train+toc;
     tic;
     fprintf('predicting...')
-    test_data_dim = feature_scaling(test_data(:,1:p_j), opts.norm);
-    if (strcmpi(opts.classifier,'libsvm'))
-        [predicted_labels{j}, accuracy, scores{j}] = svmpredict(test_labels_tmp, test_data_dim, model);
-        if (length(predicted_labels{j}) == 2*length(test_labels))
-            scores{j} = mean(cat(3,scores{j}(1:end/2,:),scores{j}(end/2+1:end,:)),3);
+    test_data_dim = test_data(:,1:p_j);
+    if (~isempty(opts.norm))
+      test_data_dim = feature_scaling(test_data_dim, opts.norm);
+    end
+    if (strcmpi(opts.classifier,'libsvm') || strcmpi(opts.classifier,'liblinear'))
+        if (strcmpi(opts.classifier,'liblinear'))
+          test_data_dim = sparse(test_data_dim);
+        end
+        [predicted_labels{j}, accuracy, scores{j}] = predict_fn(test_labels_tmp, test_data_dim, model);
+        n = length(predicted_labels{j})/length(test_labels);
+        if (mod(length(predicted_labels{j}),length(test_labels)) == 0 && n > 1)
+            scores{j} = squeeze(mean(reshape(scores{j},length(test_labels),n,size(scores{j},2)),2));
             [predicted_labels{j}, ~, accuracy] = predict_labels(scores{j}, labels, test_labels, n_classes, strcmpi(opts.classifier,'libsvm'));
         end
         acc(1,j) = accuracy(1);
@@ -86,8 +108,9 @@ for j=1:J
         else
             [~, scores{j}] = predict(model, test_data_dim);
         end
-        if (size(scores{j},1) == 2*length(test_labels))
-            scores{j} = mean(cat(3,scores{j}(1:end/2,:),scores{j}(end/2+1:end,:)),3);
+        n = size(scores{j},1)/length(test_labels);
+        if (mod(size(scores{j},1),length(test_labels)) == 0 && n > 1)
+            scores{j} = squeeze(mean(reshape(scores{j},length(test_labels),n,size(scores{j},2)),2));
         end
         [~,predicted_labels{j}] = max(scores{j},[],2);
         predicted_labels{j} = predicted_labels{j}-min(predicted_labels{j});
