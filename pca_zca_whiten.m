@@ -29,9 +29,15 @@ elseif (nargin > 2)
     end
 else
     projection = false;
+    if (size(data,1) <= 1)
+      error('data are invalid')
+    end
     if (isfield(opts,'pca_dim') && ~isempty(opts.pca_dim))
         dim = opts.pca_dim; % the number of PCA dimensionalities (principal components)
         dim_str = num2str(dim);
+        if (size(data,2) <= dim && isempty(strfind(opts.pca_mode,'zca')))
+          error('the number of samples must be greater than the number of desired dimensions')
+        end
     elseif (isfield(opts,'pca_fraction'))
         pca_fraction = opts.pca_fraction;
         dim = [];
@@ -78,6 +84,7 @@ else
         select_dim = true;
     else
         select_dim = false;
+        dim = min(dim, size(data,2));
     end
     if (opts.pca_fast)
         [evectors,evalues,~] = fsvd(data', dim, 2);
