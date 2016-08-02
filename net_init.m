@@ -23,6 +23,11 @@ for layer_id=1:numel(net.layers)
         net.layers{layer_id}.filter_size(3) = net.layers{layer_id}.sample_size(end);
     end
     
+    net.layers{layer_id}.crop = find_value(varargin, 'crop', layer_id, 0);
+    
+    % display progress in detail
+    net.layers{layer_id}.verbose = find_value(varargin, 'verbose', layer_id, true);
+    
     % filter response normalization
     net.layers{layer_id}.norm = find_value(varargin, 'conv_norm', layer_id, 'stat');
     if (isfield(net.layers{layer_id},'conv_norm'))
@@ -112,10 +117,12 @@ for l=1:n_layers
     for b=1:numel(blocks)
         if (strfind(blocks{b},'conv'))
             id = strfind(blocks{b},'conv');
+            net.layers{l}.conv_orders = str2double(blocks{b}(id(1)+4));
             if (length(blocks{b}) >= 7)
-                net.layers{l}.conv_orders = str2double(blocks{b}(id(1)+4)):str2double(blocks{b}(id(1)+6));
-            else
-                net.layers{l}.conv_orders = str2double(blocks{b}(id(1)+4));
+              b2 = str2double(blocks{b}(id(1)+6));
+              if (isfinite(b2))
+                net.layers{l}.conv_orders = net.layers{l}.conv_orders:b2;
+              end
             end
         elseif (strfind(blocks{b},'ch'))
             filter_depth = str2double(blocks{b}(1:end-2));
@@ -150,10 +157,6 @@ end
 
 if (iscell(value))
     value = value{layer_id};
-end
-
-if (isempty(value))
-    error('parameter not found nor specified')
 end
 
 end

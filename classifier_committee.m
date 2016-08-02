@@ -66,9 +66,9 @@ for j=1:J
     fprintf('%d/%d, SVM model for PCA dim (p_j) = %d \n', j, J, p_j)
     fprintf('- using a %s: training...', upper(proc))
     % normalize features
-    train_data_dim = train_data(:,1:p_j);
+   train_data_dim = train_data(:,1:p_j);
     if (~isempty(opts.norm))
-      train_data_dim = feature_scaling(train_data_dim, opts.norm);
+     train_data_dim = feature_scaling(train_data_dim, opts.norm);
     end
     if (strcmpi(opts.classifier,'gtsvm'))
         context.initialize(train_data_dim, train_labels, true, C, 'gaussian', 1/(size(train_data_dim,2)), 0, 0, false);
@@ -87,13 +87,13 @@ for j=1:J
     time_train = time_train+toc;
     tic;
     fprintf('predicting...')
-    test_data_dim = test_data(:,1:p_j);
+   test_data_dim = test_data(:,1:p_j);
     if (~isempty(opts.norm))
-      test_data_dim = feature_scaling(test_data_dim, opts.norm);
+     test_data_dim = feature_scaling(test_data_dim, opts.norm);
     end
     if (strcmpi(opts.classifier,'libsvm') || strcmpi(opts.classifier,'liblinear'))
         if (strcmpi(opts.classifier,'liblinear'))
-          test_data_dim = sparse(test_data_dim);
+         test_data_dim = sparse(test_data_dim);
         end
         [predicted_labels{j}, accuracy, scores{j}] = predict_fn(test_labels_tmp, test_data_dim, model);
         n = length(predicted_labels{j})/length(test_labels);
