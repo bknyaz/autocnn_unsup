@@ -32,7 +32,7 @@ if (~isfield(opts,'rectifier_param'))
     opts.rectifier_param = [0,Inf];
 end
 if (~isfield(opts,'rectifier'))
-    opts.rectifier = {'abs','abs'};
+    opts.rectifier = 'abs';
 end
 if (~isfield(opts,'conv_norm'))
     opts.conv_norm = 'stat';
@@ -54,16 +54,22 @@ if (~exist(opts.dataDir,'dir'))
 end
 fprintf('loading and preprocessing data \n')
 opts.sample_size = sample_size;
+if (~isfield(opts,'val') || isempty(opts.val))
+  opts.val = false; % true for cross-validation on the training set
+end
 [data_train, data_test] = load_MNIST_data(opts);
 opts.dataset = 'mnist';
 
 if (~isfield(opts,'n_folds'))
     opts.n_folds = 1;
 end
+if (~isfield(opts,'n_train'))
+    opts.n_train = size(data_train.images,1);
+end
 
 net = opts.net_init_fn();
 % PCA dimensionalities (p_j) for the SVM committee
-if (~isfield(opts,'PCA_dim') || isempty(opts.PCA_dim))
+if (~isfield(opts,'PCA_dim'))
     if (numel(net.layers) > 1)
         if (opts.n_train >= 60e3)
             opts.PCA_dim = [200,250,275,300,350,375,400];
@@ -110,21 +116,33 @@ data_train.images = reshape(permute(reshape(single(x1(17:end))./255,[opts.sample
     [60e3,prod(opts.sample_size(1:2))]);
 data_train.unlabeled_images = data_train.images;
 
-f=fopen(fullfile(opts.dataDir, 't10k-images-idx3-ubyte'),'r') ;
-x2=fread(f,inf,'uint8');
-fclose(f);
-data_test.images = reshape(permute(reshape(single(x2(17:end))./255,[opts.sample_size(1:2),10e3]),[3 2 1]),...
-    [10e3,prod(opts.sample_size(1:2))]);
-
 f=fopen(fullfile(opts.dataDir, 'train-labels-idx1-ubyte'),'r');
 y1=fread(f,inf,'uint8');
 fclose(f);
 data_train.labels = double(y1(9:end));
 
-f=fopen(fullfile(opts.dataDir, 't10k-labels-idx1-ubyte'),'r');
-y2=fread(f,inf,'uint8');
-fclose(f);
-data_test.labels = double(y2(9:end));
+if (opts.val)
+    % cross-validation mode
+    all_ids = 1:size(data_train.images,1);
+    train_ids = all_ids(randperm(length(all_ids), 10e3));
+    test_ids = all_ids(~ismember(all_ids,train_ids));
+    test_ids = test_ids(randperm(length(test_ids), 10e3));
+    data_test.images = data_train.images(test_ids,:);
+    data_test.labels = data_train.labels(test_ids);
+    data_train.images = data_train.images(train_ids,:);
+    data_train.labels = data_train.labels(train_ids);
+    data_train.unlabeled_images = data_train.images;
+else
+    f=fopen(fullfile(opts.dataDir, 't10k-labels-idx1-ubyte'),'r');
+    y2=fread(f,inf,'uint8');
+    fclose(f);
+    data_test.labels = double(y2(9:end));
+    f=fopen(fullfile(opts.dataDir, 't10k-images-idx3-ubyte'),'r') ;
+    x2=fread(f,inf,'uint8');
+    fclose(f);
+    data_test.images = reshape(permute(reshape(single(x2(17:end))./255,[opts.sample_size(1:2),10e3]),[3 2 1]),...
+      [10e3,prod(opts.sample_size(1:2))]);
+end
 
 if (opts.whiten)
     fprintf('performing data whitening \n')

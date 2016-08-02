@@ -32,7 +32,7 @@ if (~isfield(opts,'rectifier_param'))
     opts.rectifier_param = [0.25,25];
 end
 if (~isfield(opts,'rectifier'))
-    opts.rectifier = {'relu','abs'};
+    opts.rectifier = {'relu','abs','abs'};
 end
 if (~isfield(opts,'conv_norm'))
     opts.conv_norm = 'rootsift';
@@ -51,7 +51,10 @@ if (~exist(opts.dataDir,'dir'))
 end
 fprintf('loading and preprocessing data \n')
 opts.sample_size = sample_size;
-[data_train, data_test] = load_STL10_data(opts, 0, 40e3);
+if (~isfield(opts,'val') || isempty(opts.val))
+  opts.val = false; % true for cross-validation on the training set
+end
+[data_train, data_test] = load_STL10_data(opts, 0, 10e3);
 opts.dataset = 'stl10';
 
 if (~isfield(opts,'n_folds'))
@@ -60,7 +63,7 @@ end
 
 net = opts.net_init_fn(); % initialize a network
 % PCA dimensionalities (p_j) for the SVM committee
-if (~isfield(opts,'PCA_dim') || isempty(opts.PCA_dim))
+if (~isfield(opts,'PCA_dim'))
     if (numel(net.layers) > 1)
         opts.PCA_dim = [40,70,80,120,150,250,300:100:1500];
     else
@@ -76,7 +79,7 @@ for fold_id = 1:opts.n_folds
     data_train.labels = data_train_fold.labels;
     test_results = autocnn_unsup(data_train, data_test, net, opts);
     % for STL-10 we learn filters and process test features only once and use them for all 10 training folds
-    if (fold_id == 1), opts.test_features = test_results.test_features; net = test_results.net{1}; end
+    if (fold_id == 1 && ~opts.val), opts.test_features = test_results.test_features; net = test_results.net{1}; end
     
     fprintf('test took %5.3f seconds \n', etime(clock,time_start));
     fprintf('test (fold %d/%d) %s on %s \n\n', fold_id, opts.n_folds, upper('finished'), datestr(clock))
@@ -90,6 +93,10 @@ function [data_train, data_test] = load_STL10_data(opts, fold_id, n_unlabeled)
 data_train.unlabeled_images = [];
 data_train.unlabeled_images_whitened = [];
 
+if (opts.whiten && ~exist(fullfile(opts.dataDir,'train_whitened.mat'),'file'))
+  % we need more than 27k samples to perform whitening, e.g., 40k
+  n_unlabeled = max(n_unlabeled, 40e3);
+end
 % load unwhitened unlabeled images (to learn filters and connections) if requested
 if (n_unlabeled)
     fprintf('loading unlabeled data \n')
@@ -135,7 +142,6 @@ else
     data_train.images = single(imdb.X)./255;
     data_train.labels = imdb.y;
     if (opts.whiten)
-        % we need for than 27k samples here, so load 40k
         fprintf('performing data whitening (this can take a long time) \n')
         opts.pca_dim = [];
         opts.pca_epsilon = 0.05;
