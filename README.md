@@ -1,3 +1,6 @@
+## Update
+This version of scripts is kept for reference. The new version implementing an AutoCNN will be soon available at [autocnn_unsup_v2] (https://github.com/bknyaz/autocnn_unsup_v2). There is also simple [Python code] (https://github.com/bknyaz/autocnn_unsup_py) to learn filters with recursive autoconvolution and k-means.
+
 # autocnn_unsup
 Matlab scripts implementing the model from our work 
 [`Autoconvolution for Unsupervised Feature Learning`] (http://arxiv.org/abs/1606.00611) 
