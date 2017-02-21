@@ -4,6 +4,8 @@ There is also simple [Python code] (https://github.com/bknyaz/autocnn_unsup_py) 
 
 We present scripts for MNIST ([autocnn_mnist.m] (autocnn_mnist.m)), CIFAR-10 (CIFAR-100) ([autocnn_cifar.m] (autocnn_cifar.m)) and STL-10 ([autocnn_stl10.m] (autocnn_stl10.m)).
 
+To try this version run scripts from the [experiments](https://github.com/bknyaz/autocnn_unsup_v2/tree/master/experiments) folder.
+
 ## Example of running
 ```matlab
 opts.matconvnet = 'home/code/3rd_party/matconvnet';
@@ -16,6 +18,7 @@ opts.arch = '1024c5-3p-conv0_3__32g-32ch-256c5-3p-conv0_2__32g-256ch-1024c5-3p-c
 autocnn_cifar(opts, 'learning_method', {'kmeans','pca','pca'}, 'augment', true)
 ```
 This script should obtain an average accuracy of about 79.4% on CIFAR-10 (400).
+
 
 ## Requirements
 For faster filter learning it's recommended to use [VLFeat] (http://www.vlfeat.org/), and for faster forward 
