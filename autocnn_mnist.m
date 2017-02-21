@@ -3,8 +3,6 @@
 % However, consider the following parameters to improve speed and classification accuracy:
 % opts.matconvnet (optional, recommended) - path to the MatConvNet root directory, e.g, /home/code/3rd_party/matconvnet
 % opts.vlfeat (optional, recommended) - path to the VLFeat mex directory, e.g, /home/code/3rd_party/vlfeat/toolbox/mex/mexa64
-% opts.gtsvm (optional, recommended) - path to the GTSVM mex directory, e.g, /home/code/3rd_party/gtsvm/mex
-% opts.libsvm (optional) - path to the LIBSVM root directory, e.g, /home/code/3rd_party/libsvm/matlab
 %
 % opts.n_train (optional) - number of labeled training samples (default: full test)
 % opts.arch (optional) - network architecture (default: large 2 layer network)
@@ -42,6 +40,7 @@ if (~isfield(opts,'arch'))
 end
 
 sample_size = [28,28,1];
+opts.dataset = 'mnist';
 opts.lcn_l2 = true; % local feature map normalization
 opts.lcn = false; % LCN is turned off for MNIST
 opts.net_init_fn = @() net_init(opts.arch, opts, 'sample_size', sample_size, varargin{:});
@@ -58,7 +57,6 @@ if (~isfield(opts,'val') || isempty(opts.val))
   opts.val = false; % true for cross-validation on the training set
 end
 [data_train, data_test] = load_MNIST_data(opts);
-opts.dataset = 'mnist';
 
 if (~isfield(opts,'n_folds'))
     opts.n_folds = 1;

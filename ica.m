@@ -272,7 +272,7 @@ while iter < p.iter_max
   if rem(iter,p.write)==0 | iter==1
     
     A = dewhiteningMatrix * B;
-    figure(1),imsetshow(imresize(reshape(gather(A),[13,13,3,500]),3),20,25); drawnow
+%     figure(1),imsetshow(imresize(reshape(gather(A),[13,13,3,500]),3),20,25); drawnow
     W = B' * whiteningMatrix;
      
 %     fprintf(['Writing file: ' fname '...']);

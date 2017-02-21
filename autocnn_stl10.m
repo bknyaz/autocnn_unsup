@@ -1,10 +1,8 @@
-% Demo code for training and prediction on STL-10 with a 1-2 layer AutoCNN
+% Demo code for training and prediction on STL-10 with a 1-3 layer AutoCNN
 % The code can work without parameters and dependencies
 % However, consider the following parameters to improve speed and classification accuracy:
 % opts.matconvnet (optional, recommended) - path to the MatConvNet root directory, e.g, /home/code/3rd_party/matconvnet
 % opts.vlfeat (optional, recommended) - path to the VLFeat mex directory, e.g, /home/code/3rd_party/vlfeat/toolbox/mex/mexa64
-% opts.gtsvm (optional, recommended) - path to the GTSVM mex directory, e.g, /home/code/3rd_party/gtsvm/mex
-% opts.libsvm (optional) - path to the LIBSVM root directory, e.g, /home/code/3rd_party/libsvm/matlab
 %
 % opts.n_train (optional) - number of labeled training samples (default: full test)
 % opts.arch (optional) - network architecture (default: large 2 layer network)
@@ -28,11 +26,8 @@ end
 if (~isfield(opts,'batch_size'))
     opts.batch_size = 25;
 end
-if (~isfield(opts,'rectifier_param'))
-    opts.rectifier_param = [0.25,25];
-end
 if (~isfield(opts,'rectifier'))
-    opts.rectifier = {'relu','abs','abs'};
+    opts.rectifier = {'relu','abs','abs','abs'};
 end
 if (~isfield(opts,'conv_norm'))
     opts.conv_norm = 'rootsift';
@@ -54,7 +49,7 @@ opts.sample_size = sample_size;
 if (~isfield(opts,'val') || isempty(opts.val))
   opts.val = false; % true for cross-validation on the training set
 end
-[data_train, data_test] = load_STL10_data(opts, 0, 10e3);
+[data_train, data_test] = load_STL10_data(opts, 0, 20e3);
 opts.dataset = 'stl10';
 
 if (~isfield(opts,'n_folds'))
@@ -65,7 +60,7 @@ net = opts.net_init_fn(); % initialize a network
 % PCA dimensionalities (p_j) for the SVM committee
 if (~isfield(opts,'PCA_dim'))
     if (numel(net.layers) > 1)
-        opts.PCA_dim = [40,70,80,120,150,250,300:100:1500];
+        opts.PCA_dim = [40,70,80,120,150,250,300:100:1000];
     else
         opts.PCA_dim = [30:10:100,120,150:50:250,300:100:600];
     end
@@ -79,7 +74,7 @@ for fold_id = 1:opts.n_folds
     data_train.labels = data_train_fold.labels;
     test_results = autocnn_unsup(data_train, data_test, net, opts);
     % for STL-10 we learn filters and process test features only once and use them for all 10 training folds
-    if (fold_id == 1 && ~opts.val), opts.test_features = test_results.test_features; net = test_results.net{1}; end
+    if (fold_id == 1 && ~opts.val), opts.test_features = test_results.test_features; opts.svm_params = test_results.svm_params; net = test_results.net{1}; end
     
     fprintf('test took %5.3f seconds \n', etime(clock,time_start));
     fprintf('test (fold %d/%d) %s on %s \n\n', fold_id, opts.n_folds, upper('finished'), datestr(clock))
@@ -117,6 +112,7 @@ if (opts.whiten && exist(fullfile(opts.dataDir,'train_whitened.mat'),'file'))
         data_train.images = imdb.X(imdb.fold_indices{fold_id}, :);
         data_train.labels = imdb.y(imdb.fold_indices{fold_id});
     end
+    
     % load whitened unlabeled images (to perform PCA) if requested
     if (n_unlabeled)
         fprintf('loading whitened unlabeled data \n')
@@ -168,9 +164,9 @@ else
     end
 end
 
-% we use the first 4k-10k samples as unlabeled data, it's enough to learn filters and connections and perform PCA
+% we use the first 4k-20k samples as unlabeled data, it's enough to learn filters and connections and perform PCA
 if (n_unlabeled)
-    unlabeled_ids = 1:min(n_unlabeled,10e3);
+    unlabeled_ids = 1:min(n_unlabeled,20e3);
     data_train.unlabeled_images = data_train.unlabeled_images(unlabeled_ids,:);
     data_train.unlabeled_images_whitened = data_train.unlabeled_images_whitened(unlabeled_ids,:);
 end

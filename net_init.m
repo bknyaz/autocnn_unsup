@@ -35,9 +35,7 @@ for layer_id=1:numel(net.layers)
     end
     
     % number of samples in a batchs (same for all layers)
-    if (layer_id == 1)
-        net.layers{layer_id}.batch_size = find_value(varargin, 'batch_size', layer_id, 128);
-    end
+    net.layers{layer_id}.batch_size = find_value(varargin, 'batch_size', layer_id, 100);
     
     % Use a GPU
     net.layers{layer_id}.gpu = find_value(varargin, 'gpu', layer_id, true);
@@ -51,7 +49,7 @@ for layer_id=1:numel(net.layers)
     net.layers{layer_id}.norm_type = layer_id; % method to normalize autoconvolutional responses
     if (layer_id > 1)
         net.layers{layer_id}.shared_filters = find_value(varargin, 'shared_filters', layer_id, true);
-        net.layers{layer_id}.connections_complete = find_value(varargin, 'connections_complete', layer_id, false);
+        net.layers{layer_id}.connections_complete = find_value(varargin, 'connections_complete', layer_id, true);
     end
     
     % Turn local contrast normalization on/off
@@ -68,6 +66,10 @@ for layer_id=1:numel(net.layers)
     
     % use features from all layers
     if (numel(net.layers) > 1)
+        
+        
+        net.layers{layer_id}.pool_pad = 1;
+        
         net.layers{layer_id}.multidict = find_value(varargin, 'multidict', layer_id, true);
         if (layer_id > 1)
             net.layers{layer_id}.pruned = false;
@@ -76,8 +78,8 @@ for layer_id=1:numel(net.layers)
     
     if (layer_id < numel(net.layers) && net.layers{layer_id}.multidict)
         pool_size_multidict = 1;
-        for l=layer_id:numel(net.layers)
-            pool_size_multidict = pool_size_multidict*net.layers{l}.pool_size;
+        for l=layer_id+1:numel(net.layers)
+            pool_size_multidict = pool_size_multidict*net.layers{l}.pool_stride;
         end
         net.layers{layer_id}.pool_size_multidict = pool_size_multidict;
     end
@@ -132,11 +134,21 @@ for l=1:n_layers
             net.layers{l}.filter_size = repmat(str2double(blocks{b}(id(1)+1:end)),1,2);
         elseif (strfind(blocks{b},'p'))
             net.layers{l}.pool_size = str2double(blocks{b}(1:end-1));
+
+        elseif (strfind(blocks{b},'s'))
+            net.layers{l}.pool_stride = str2double(blocks{b}(1:end-1));
         elseif (strfind(blocks{b},'g'))
             net.layers{l}.n_groups = str2double(blocks{b}(1:end-1));
         end
     end
     net.layers{l}.filter_size = [net.layers{l}.filter_size,filter_depth];
+    if (~isfield(net.layers{l},'pool_stride'))
+        if (n_layers > 1)
+            net.layers{l}.pool_stride = net.layers{l}.pool_size-1;
+        else
+            net.layers{l}.pool_stride = net.layers{l}.pool_size;
+        end
+    end
 end
 
 end

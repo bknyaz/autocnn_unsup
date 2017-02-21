@@ -98,7 +98,8 @@ else
         if (~strcmpi(class(cov_data),'double'))
             cov_data = double(cov_data); % required for eigs
         end
-        if (dim < size(cov_data,1))
+        if (dim < size(cov_data,1) && dim < 10e3)
+            % it can be really slow if dim is large
             [evectors, evalues] = eigs(cov_data,dim);
             evalues = diag(evalues);
         else
@@ -216,7 +217,8 @@ function [U,S,V] = fsvd(A, k, i, usePowerMethod, treatNan)
         end
 
         % Form the m?((i+1)l) matrix H
-        H = cell2mat(H);
+        assert(numel(H)==3)
+        H = cat(2,H{1},H{2},H{3}); % less memory consuming than H = cell2mat(H);
     end
 
     % Using the pivoted QR-decomposiion, form a real m?((i+1)l) matrix Q
@@ -227,7 +229,9 @@ function [U,S,V] = fsvd(A, k, i, usePowerMethod, treatNan)
 
     % Compute the n?((i+1)l) product matrix T = A^T Q
     T = A'*Q;
-
+    A = [];
+    clear A;
+    
     % Form an SVD of T
     if nargin >= 5 && treatNan
         idx_T = ~isfinite(T);
@@ -237,7 +241,9 @@ function [U,S,V] = fsvd(A, k, i, usePowerMethod, treatNan)
         end
     end
     [Vt, St, W] = svd(T,'econ');
-
+    T = [];
+    clear T;
+    
     % Compute the m?((i+1)l) product matrix
     Ut = Q*W;
 

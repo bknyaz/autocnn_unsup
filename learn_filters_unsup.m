@@ -13,6 +13,8 @@ function [filters, params] = learn_filters_unsup(feature_maps, opts)
 % It's highly recommended to install VlFeat (http://www.vlfeat.org/) beforehand, 
 % because it tends to be much faster than Matlab implementations
 
+time = tic;
+
 %% Set data dependent parameters
 % the following set of parameters should be specified according to your data
 % the default values are suitable only for datasets like CIFAR-10 and a single layer architecture
@@ -46,7 +48,7 @@ if (~isfield(opts,'crop_size'))
     fprintf('crop_size: \t\t %d \n', opts.crop_size)
 end
 if (~isfield(opts,'conv_orders'))
-    opts.conv_orders = 0:4; % autoconvolution orders (n=0,1,2,3,4)
+    opts.conv_orders = 0:3; % autoconvolution orders (n=0,1,2,3,4)
     fprintf('conv_orders: \t\t %s \n', num2str(opts.conv_orders))
 end
 if (~isfield(opts,'norm_type'))
@@ -70,6 +72,12 @@ if (strcmpi(opts.learning_method,'isa') && rem(opts.n_filters,4) ~= 0)
     error('for ISA group size is fixed to 4, so the number of filters must be multiple of 4');
 end
 
+if (strcmpi(opts.learning_method,'noise')) % learning filters from noise
+  feature_maps = rand(10e3, prod(opts.sample_size), 'single');
+  opts.learning_method = 'kmeans';
+  fprintf('learning filters from noise with kmeans \n')
+end
+
 if (~isfield(opts,'patches_norm'))
     opts.patches_norm = 'gray'; % normalize patches in the range [0,1] before (whitening and) learning 
     fprintf('patches_norm: \t\t ''%s'' \n', opts.patches_norm)
@@ -79,8 +87,8 @@ if (~isfield(opts,'filters_whiten'))
     opts.filters_whiten = true; % true to whiten patches before learning
     fprintf('filters_whiten: \t %d \n', opts.filters_whiten)
 end
-opts.filters_whiten = opts.filters_whiten && ~strcmpi(opts.learning_method,'ica') && ~strcmpi(opts.learning_method,'isa') ...
-    && ~strcmpi(opts.learning_method,'pca');
+opts.filters_whiten = opts.filters_whiten && ~strcmpi(opts.learning_method,'pca') ...
+&& ~strcmpi(opts.learning_method,'ica') && ~strcmpi(opts.learning_method,'isa');
 if (~isfield(opts,'whiten_independ'))
     opts.whiten_independ = false; % true to whiten patches before learning independently for each autoconvolution order
     fprintf('whiten_independ: \t %d \n', opts.whiten_independ)
@@ -89,13 +97,14 @@ opts.whiten_independ = opts.whiten_independ && opts.filters_whiten;
 
 opts.pca_epsilon = 0.05; % whitening regularization constant
 opts.pca_mode = 'zcawhiten'; % for patches whitening
-    
+opts.pca_fast = false;
+
 if (~isfield(opts,'shared_filters'))
     opts.shared_filters = true; % true to use same filters for all groups of feature maps
     fprintf('shared_filters: \t %d \n', opts.shared_filters)
 end
 
-if (strcmpi(opts.learning_method,'kmeans'))
+if (~isempty(strfind(opts.learning_method,'kmeans')))
     if (~isfield(opts,'kmeans_algorithm'))
         opts.kmeans_algorithm = 'ELKAN'; % 'ANN' or 'ELKAN'
         fprintf('kmeans_algorithm: \t ''%s'' \n', opts.kmeans_algorithm)
@@ -106,9 +115,14 @@ elseif (strcmpi(opts.learning_method,'conv_kmeans'))
     opts.filter_size = min(opts.sample_size(1), 2.*opts.filter_size); % temporary assign this value
 end
 
-if (~isfield(opts,'batch_size'))
-    opts.batch_size = 256; % extract batches of patches (to speed up)
-    fprintf('batch_size: \t\t %d \n', opts.batch_size)
+if (~isfield(opts,'spherical'))
+    opts.spherical = false; % normalize patches before learning
+    fprintf('spherical: \t\t %d \n', opts.spherical)
+end
+
+if (~isfield(opts,'batch_size_train'))
+    opts.batch_size_train = 128; % extract batches of patches (to speed up)
+    fprintf('batch_size_train: \t %d \n', opts.batch_size_train)
 end
 
 if (~isfield(opts,'gpu'))
@@ -127,45 +141,50 @@ fprintf('-> extracting at least %d patches for %d group(s)... \n', n_min, n_grou
 nSamples = size(feature_maps,1);
 patches = cell(length(opts.conv_orders),n_groups);
 n_min_group = ceil(n_min/max(1,opts.shared_filters*n_groups));
-opts.batch_size = min([opts.batch_size, nSamples, n_min_group]);
+opts.batch_size_train = min([opts.batch_size_train, nSamples, n_min_group]);
 for group=1:n_groups
-    if (mod(group,min([8,floor(n_groups/2),n_groups])) == 0), fprintf('group: %d/%d, feature maps: %s \n', group, n_groups, num2str(find(connections(group,:)))); end
-    n_patches = 0;
-    offset = 0;
-    patches_batch = zeros(opts.crop_size(1),opts.crop_size(1),nnz(connections(group,:)),opts.batch_size,'single');
+  if (mod(group,min(8,floor(n_groups/2))) == 0 || mod(group,n_groups) == 0)
+      fprintf('group: %d/%d, %d feature maps (from %d to %d) \n', group, n_groups, nnz(connections(group,:)), ...
+      find(connections(group,:),1,'first'), find(connections(group,:),1,'last')); 
+  end
+  n_patches = 0;
+  offset = 0;
+  patches_batch = zeros(opts.crop_size(1),opts.crop_size(1),nnz(connections(group,:)),opts.batch_size_train,'single');
+  if (opts.gpu)
+      patches_batch = gpuArray(patches_batch);
+  end
+  while (n_patches < n_min_group)
+    % featMaps - a 4D array (spatial rows x cols x N_filters_prev x batch_size_train)
+    ids1 = randperm(nSamples, opts.batch_size_train);
+    % take crops with random spatial locations
+    rows = randi([1+offset, 1+opts.sample_size(1)-opts.crop_size(1)-offset], 1, opts.batch_size_train);
+    cols = randi([1+offset, 1+opts.sample_size(2)-opts.crop_size(1)-offset], 1, opts.batch_size_train);
+    for b=1:opts.batch_size_train
+      % use linear indexing for speedup
+      [x,y,z] = meshgrid(rows(b):rows(b)+opts.crop_size(1)-1, cols(b):cols(b)+opts.crop_size(1)-1, find(connections(group,:)));
+      ids = sub2ind(opts.sample_size, x(:), y(:), z(:));
+      featMaps = feature_maps(ids1(b),ids);
+      featMaps = reshape(featMaps, opts.crop_size(1), opts.crop_size(1), nnz(connections(group,:)));
+      featMaps = permute(featMaps,[2,1,3,4]);
+      patches_batch(:,:,:,b) = featMaps;
+    end
     if (opts.gpu)
-        patches_batch = gpuArray(patches_batch);
+      patches_batch = gpuArray(patches_batch);
     end
-    while (n_patches < n_min_group)
-        % featMaps - a 4D array (spatial rows x cols x N_filters_prev x batch_size)
-        featMaps = reshape(feature_maps(randperm(nSamples, opts.batch_size),:)', [opts.sample_size, opts.batch_size]);
-        if (opts.gpu)
-            featMaps = gpuArray(featMaps);
-        end
-        % take crops with random spatial locations
-        rows = randi([1+offset, 1+opts.sample_size(1)-opts.crop_size(1)-offset], 1, opts.batch_size);
-        cols = randi([1+offset, 1+opts.sample_size(2)-opts.crop_size(1)-offset], 1, opts.batch_size);
-        for b=1:opts.batch_size
-            patches_batch(:,:,:,b) = featMaps(rows(b):rows(b)+opts.crop_size(1)-1, ...
-                cols(b):cols(b)+opts.crop_size(1)-1, connections(group,:), b);
-        end
-        % X_n - a cell with 4D arrays (spatial rows x cols x depth x batch_size)
-        X_n = autoconv_recursive_2d(patches_batch, max(opts.conv_orders), opts.filter_size, opts.norm_type);
-        X_n = X_n(opts.conv_orders+1); % take patches of only specified orders
-        
-        % collect patches independently for each conv_order (n)
-        for n=1:numel(X_n)
-            if (opts.gpu)
-                X_n{n} = gather(X_n{n}); 
-            end
-            % estimate parameters to find and remove invalid patches
-            params_sample = estimate_params(X_n{n});
-            X_n{n}(:,:,:,cellfun(@isempty,params_sample)) = [];
-            % concatenate into the global set
-            patches{n,group} = cat(4,patches{n,group},X_n{n});
-            n_patches = n_patches + size(X_n{n},4);
-        end
+    % X_n - a cell with 4D arrays (spatial rows x cols x depth x batch_size_train)
+    X_n = autoconv_recursive_2d(patches_batch, max(opts.conv_orders), opts.filter_size, opts.norm_type);
+    X_n = X_n(opts.conv_orders+1); % take patches of only specified orders
+
+    % collect patches independently for each conv_order (n)
+    for n=1:numel(X_n)
+      if (opts.gpu)
+          X_n{n} = gather(X_n{n}); 
+      end
+      % concatenate into the global set
+      patches{n,group} = cat(4,patches{n,group},X_n{n});
+      n_patches = n_patches + size(X_n{n},4);
     end
+  end
 end
 clear feature_maps;
 
@@ -184,7 +203,7 @@ if (opts.whiten_independ)
 else
     pca_fractions = 0.99;
     for group = 1:n_groups
-        patches{1,group} = cat(4,patches{:,group});
+      patches{1,group} = cat(4,patches{:,group});
     end
     patches = patches(1,:);
 end
@@ -205,7 +224,11 @@ for group = 1:size(patches,2)
             else
                 opts.pca_fraction = pca_fractions(1);
             end
-            patches{n,group} = pca_zca_whiten(patches{n,group}, opts);
+            if (size(patches{n,group},2) > 10e3 && ~isempty(strfind(opts.learning_method,'kmeans')))
+              opts.pca_dim = 1024;
+              opts.pca_mode = 'pca_whiten';
+            end
+            [patches{n,group}, PCA_matrix, ~, L_regul] = pca_zca_whiten(patches{n,group}, opts);
         end
     end
     patches_all = cat(1,patches{:,group});
@@ -217,14 +240,17 @@ for group = 1:size(patches,2)
         patches_all = pca_zca_whiten(patches_all, opts);
     end
     
-    % normalization before clustering leads to more uniform clusters and better looking filters
-    % but surprisingly, hurts classification accuracy
-    % patches_all = feature_scaling(patches_all, 'l2'); 
-    
+    % normalization before clustering (i.e., spherical k-means) leads to more uniform clusters and better looking filters
+    % but surprisingly, hurts classification accuracy (both for raw patches and autoconvolved)
+    if (opts.spherical)
+      patches_all = feature_scaling(patches_all, 'l2'); 
+    end
     % learn filters (k-means, k-medoids, ICA, etc.) for the current group
     filters_clusters = learn_filters(patches_all, opts);
+    if (opts.filters_whiten && strcmpi(opts.pca_mode,'pca_whiten'))
+      filters_clusters = filters_clusters*L_regul*PCA_matrix';
+    end
     filters_clusters = feature_scaling(filters_clusters, 'l2'); % normalize for better usage as convolution kernels
-    
     if (strcmpi(opts.learning_method,'conv_kmeans'))
         sz(1:2) = sz(1:2)./opts.conv_kmeans_coef;
     end
@@ -233,13 +259,14 @@ for group = 1:size(patches,2)
     params{group} = cell2mat(estimate_params(filters{group}));
     
     % sort by the joint spatial and frequency resolution
-    if (~strcmpi(opts.learning_method,'isa'))
-        [params{group},ids] = sort(params{group},'ascend');
-        filters{group} = filters{group}(:,:,:,ids);
-    end
+%     if (~strcmpi(opts.learning_method,'isa'))
+%         [params{group},ids] = sort(params{group},'ascend');
+%         filters{group} = filters{group}(:,:,:,ids);
+%     end
     if (opts.vis), imsetshow(filters{group}); end
 end
-fprintf('filters are learned for %d group(s) \n', opts.n_groups)
+time = toc(time);
+fprintf('filters are learned for %d group(s) in %3.2f sec \n', opts.n_groups, time)
 
 end
 
@@ -276,7 +303,7 @@ elseif (strcmpi(opts.learning_method,'ica') || strcmpi(opts.learning_method,'isa
     else
         ica_p.model = 'isa';
         ica_p.algorithm = 'gradient';
-        ica_p.groupsize = 4;
+        ica_p.groupsize = opts.filter_size_next(end);
         ica_p.groups = opts.n_filters/ica_p.groupsize;
         ica_p.stepsize = 0.1;
         ica_p.epsi = 0.005;
@@ -287,10 +314,14 @@ elseif (strcmpi(opts.learning_method,'ica') || strcmpi(opts.learning_method,'isa
         filters = gather(filters);
     end
 elseif (strcmpi(opts.learning_method,'pca'))
+    opts.pca_fast = true;
     opts.pca_dim = opts.n_filters;
     opts.pca_mode = 'pcawhiten';
     [~, PCA_matrix, ~, L_regul] = pca_zca_whiten(data, opts);
     filters = (PCA_matrix*L_regul)';
+elseif (strcmpi(opts.learning_method,'autoenc'))
+    autoenc = trainAutoencoder(data', 'hiddenSize', opts.n_filters, 'SparsityProportion', 0.1, 'ShowProgressWindow', true);
+    filters = autoenc.DecoderWeights';
 elseif (strcmpi(opts.learning_method,'vl_gmm'))
     [filters,~,~] = vl_gmm(data', opts.n_filters);
     filters = filters';
@@ -308,6 +339,10 @@ elseif (~isempty(strfind(opts.learning_method,'kmeans')))
     if (strcmpi(opts.learning_method,'kmeans'))
         [filters,ids,energy] = vl_kmeans(data', opts.n_filters, 'Algorithm', opts.kmeans_algorithm,'Distance','l2',...
                 'NumRepetitions',3,'MaxNumComparisons',2000,'MaxNumIterations',1000,'Initialization','PLUSPLUS');
+        filters = filters';
+    elseif (strcmpi(opts.learning_method,'simple_kmeans'))
+        [filters,ids,energy] = vl_kmeans(data', opts.n_filters, 'Algorithm', opts.kmeans_algorithm,'Distance','l2',...
+                'NumRepetitions',1,'MaxNumComparisons',1000,'MaxNumIterations',1000,'Initialization','PLUSPLUS');
         filters = filters';
     elseif (strcmpi(opts.learning_method,'kmeans_matlab'))
         % this can be very slow, however, we can enjoy various distance measures

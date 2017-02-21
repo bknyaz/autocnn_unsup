@@ -1,4 +1,4 @@
-function [acc,scores,predicted_labels] = classifier_committee(train_data, test_data, train_labels, test_labels, opts)
+function [acc,scores,predicted_labels,svm_params] = classifier_committee(train_data, test_data, train_labels, test_labels, opts)
 % Trains a committee of J>0 SVM (or LDA) models
 % opts - model and SVM (or LDA) parameters
 % To train SVMs on a GPU GTSVM must be installed: http://ttic.uchicago.edu/~cotter/projects/gtsvm/
@@ -7,11 +7,13 @@ J = max(1,length(opts.PCA_dim)); % the number of SVM (or LDA) models in the comm
 acc = zeros(2,J); % predicting accuracies in %
 scores = cell(1,J); % SVM (or LDA) scores
 predicted_labels = cell(1,J); % test data labels predicted with SVMs (or LDA)
-C = 16; % the SVM regularization constant is fixed in all experiments
-kernel = 2; % RBF SVM
 
+% the SVM regularization constant for RBF SVM (is fixed in all experiments)
+if (~isfield(opts,'SVM_C')), C = 16; else C = opts.SVM_C; end
+kernel = 2; % RBF SVM if libsvm
+svm_params = [];
 % check labels
-train_labels = double(train_labels(1:size(train_data,1)));
+train_labels = double(train_labels);
 test_labels = double(test_labels);
 % make sure that labels are in the range [0,n_classes]
 train_labels = train_labels-min(train_labels); 
@@ -24,12 +26,13 @@ end
 fprintf('%d training labels: \t %s \n', n_classes, num2str(labels)) 
 fprintf('%d test labels: \t %s \n', n_classes, num2str(unique(test_labels)'))
 
+cv_mode = false;
 if (strcmpi(opts.classifier,'gtsvm'))
     context = gtsvm;
     proc = 'gpu';
 else
     proc = 'cpu';
-    % For LIBSVM to make scores label-consistent for arbitrary sets of training labels
+    % For LIBSVM to make scores ordered according to labels (0-n_classes) for arbitrary sets of training labels
     % it is necessary to sort training samples so that the first training labels are 0:n_classes-1
     id_first = zeros(n_classes,1);
     for i=1:n_classes, id_first(i) = find(train_labels == labels(i),1,'first'); end
@@ -38,7 +41,7 @@ else
     train_data = cat(1,train_data(id_first,:),train_data(id_rest,:));
     % convert to double
     train_data = double(train_data);
-    test_data = double(test_data);
+    
     test_labels_tmp = test_labels;
     n = size(test_data,1)/length(test_labels);
     if (size(test_data,1) ~= length(test_labels))
@@ -49,7 +52,17 @@ else
         end
     end
     if (strcmpi(opts.classifier,'liblinear'))
-      C = 1;
+        if (~isfield(opts,'SVM_C') || ~isfield(opts,'SVM_B'))
+            cv_mode = true;
+            if isfield(opts,'dataset') && strcmpi(opts.dataset,'mnist')
+                [C_val,B_val] = meshgrid([1e-4,2e-4,4e-4,8e-4,16e-4,32e-4],[0,3,5])
+            else
+                [C_val,B_val] = meshgrid([1e-4,2e-4,4e-4,8e-4],[0,3,5])
+            end
+        else
+            C = opts.SVM_C;
+            B = opts.SVM_B;
+        end
     end
 end
 
@@ -65,10 +78,19 @@ for j=1:J
     tic;
     fprintf('%d/%d, SVM model for PCA dim (p_j) = %d \n', j, J, p_j)
     fprintf('- using a %s: training...', upper(proc))
+    if (J==1)
+        train_data_dim = train_data;
+        clear train_data;
+    else
+        if (issparse(train_data) && p_j == size(train_data,2))
+            train_data_dim = train_data;
+        else
+            train_data_dim = train_data(:,1:p_j);
+        end
+    end
     % normalize features
-   train_data_dim = train_data(:,1:p_j);
-    if (~isempty(opts.norm))
-     train_data_dim = feature_scaling(train_data_dim, opts.norm);
+    if (~isempty(opts.norm) && ~issparse(train_data_dim))
+      train_data_dim = feature_scaling(train_data_dim, opts.norm);
     end
     if (strcmpi(opts.classifier,'gtsvm'))
         context.initialize(train_data_dim, train_labels, true, C, 'gaussian', 1/(size(train_data_dim,2)), 0, 0, false);
@@ -77,7 +99,48 @@ for j=1:J
         model = svmtrain(train_labels, train_data_dim, sprintf('-t %d -q -c %f', kernel, C));
         predict_fn = @svmpredict;
     elseif (strcmpi(opts.classifier,'liblinear'))
-        model = train(train_labels, sparse(train_data_dim), sprintf('-s 1 -q -c %f', C));
+        if (~issparse(train_data_dim) && ~cv_mode)
+            train_data_dim = sparse(train_data_dim);
+        end
+        if (cv_mode)
+            n_max = 10^4;
+            fprintf('cross-validation of C and B ... \n')
+            if (size(test_data,1) > length(test_labels))
+                fprintf('using the first %d samples for validation ... \n', opts.n_train)
+                cv_ids = 1:min(n_max,opts.n_train);
+                train_data_dim_cv = sparse(train_data_dim(cv_ids,:));
+            else
+                if (length(train_labels) < n_max)
+                    cv_ids = 1:length(train_labels);
+                    train_data_dim_cv = sparse(train_data_dim);
+                else
+                    cv_ids = 1:min(n_max,length(train_labels));
+                    train_data_dim_cv = sparse(train_data_dim(cv_ids,:));
+                end
+            end
+            acc_cv = [];
+            for k=1:numel(C_val)
+                fprintf('%d/%d, C=%f,B=%f \n', k, numel(C_val), C_val(k), B_val(k))
+                acc_cv(k) = train(train_labels(cv_ids), train_data_dim_cv, sprintf('-v 5 -s 1 -q -c %f -B %f', C_val(k), B_val(k)));
+            end
+            [~,k] = max(acc_cv);
+            C = C_val(k(1));
+            B = B_val(k(1));
+            fprintf('best C = %f and B = %f \n', C, B)
+            if (size(test_data,1) > length(test_labels))
+                clear train_data_dim_cv
+                train_data_dim = sparse(train_data_dim);
+            else
+                if (length(train_labels) < n_max)
+                    train_data_dim = train_data_dim_cv;
+                    clear train_data_dim_cv
+                else
+                    clear train_data_dim_cv
+                    train_data_dim = sparse(train_data_dim);
+                end
+            end
+        end
+        model = train(train_labels, train_data_dim, sprintf('-s 1 -q -c %f -B %f', C, B));
         predict_fn = @predict;
     elseif (strcmpi(opts.classifier,'lda'))
         model = fitcdiscr(train_data_dim, train_labels, 'SaveMemory','on');
@@ -85,23 +148,24 @@ for j=1:J
         error('not supported classifier')
     end
     time_train = time_train+toc;
+    if (J==1), clear train_data_dim; end
     tic;
     fprintf('predicting...')
-   test_data_dim = test_data(:,1:p_j);
-    if (~isempty(opts.norm))
-     test_data_dim = feature_scaling(test_data_dim, opts.norm);
+    if (J==1) 
+        test_data_dim = test_data;
+        clear test_data;
+    else
+        if (issparse(test_data) && p_j == size(test_data,2))
+            test_data_dim = test_data;
+        else
+            test_data_dim = test_data(:,1:p_j);
+        end
+    end
+    if (~isempty(opts.norm) && ~issparse(test_data_dim))
+      test_data_dim = feature_scaling(test_data_dim, opts.norm);
     end
     if (strcmpi(opts.classifier,'libsvm') || strcmpi(opts.classifier,'liblinear'))
-        if (strcmpi(opts.classifier,'liblinear'))
-         test_data_dim = sparse(test_data_dim);
-        end
-        [predicted_labels{j}, accuracy, scores{j}] = predict_fn(test_labels_tmp, test_data_dim, model);
-        n = length(predicted_labels{j})/length(test_labels);
-        if (mod(length(predicted_labels{j}),length(test_labels)) == 0 && n > 1)
-            scores{j} = squeeze(mean(reshape(scores{j},length(test_labels),n,size(scores{j},2)),2));
-            [predicted_labels{j}, ~, accuracy] = predict_labels(scores{j}, labels, test_labels, n_classes, strcmpi(opts.classifier,'libsvm'));
-        end
-        acc(1,j) = accuracy(1);
+       [scores{j}, predicted_labels{j}, acc(1,j)] = predict_batches(test_data_dim, test_labels_tmp, test_labels, labels, model, predict_fn, opts);
     else
         if (strcmpi(opts.classifier,'gtsvm'))
             scores{j} = context.classify(test_data_dim);
@@ -144,48 +208,4 @@ fprintf('training: \t %3.2f sec (committee) \t\t\t %3.2f sec (avg single) \n \t\
 
 fprintf('prediction: \t %3.2f sec (committee) \t\t\t %3.2f sec (avg single) \n \t\t %3.2f samples/sec (committee) \t %3.2f samples/sec (avg single) \n', ...
     time_test, time_test/J, length(test_labels)/time_test, length(test_labels)/time_test*J)
-end
-
-function [predicted_labels, predicted_labels_second, acc] = predict_labels(scores, train_labels, test_labels, n_classes, onevsone)
-
-u = unique(train_labels,'stable');
-predicted_labels_second = []; % second guesses
-if (onevsone)
-    predicted_labels = zeros(length(test_labels),1);
-    predicted_labels_second = predicted_labels;
-    for k=1:length(test_labels)
-        vote = zeros(1,n_classes);
-        for model_id=1:size(scores,3)
-            p = 1;
-            for i=1:n_classes
-                for j=i+1:n_classes
-
-                    dec_value = scores(k,p,model_id);
-
-                    if(dec_value > 0.0)
-                        vote(i) = vote(i) + 1;
-                    else
-                        vote(j) = vote(j) + 1;
-                    end
-                    p = p + 1;
-                end
-            end
-        end
-        vote_max_idx = find(vote == max(vote));
-        vote_max_idx = vote_max_idx(1);
-        predicted_labels(k) = u(vote_max_idx);
-        m = vote(vote_max_idx);
-        vote_max_idx = 1;
-        for i=1:n_classes
-            if(vote(i) > vote(vote_max_idx) && vote(i) < m)
-                vote_max_idx = i;
-            end
-        end
-        predicted_labels_second(k) = u(vote_max_idx);
-    end
-else
-    [~,idx] = max(scores,[],2);
-    predicted_labels = idx-1;
-end
-acc = nnz(predicted_labels == test_labels)/numel(test_labels)*100;
 end

@@ -56,10 +56,10 @@ for layer_id = 1:n_layers
         % for the last layer local contrast normalization is not useful
         net.layers{layer_id}.lcn = layer_id < n_layers;
     else
-%         if (layer_id == n_layers), net.layers{layer_id}.lcn = false; end % override the value
+        if (layer_id == n_layers && n_layers > 1), net.layers{layer_id}.lcn = false; end % override the value
     end
     
-    if (~isfield(net.layers{layer_id},'conv_pad'))
+    if (~isfield(net.layers{layer_id},'conv_pad') || isempty(net.layers{layer_id}.conv_pad))
         net.layers{layer_id}.conv_pad = floor(net.layers{layer_id}.filter_size(1:2)./2); % zero padding for convolution
     end
     if (~isfield(net.layers{layer_id},'pool_pad'))
@@ -80,7 +80,9 @@ for layer_id = 1:n_layers
     if (net.layers{layer_id}.complex_filters)
         net.layers{layer_id}.filters = hilbert_5d(net.layers{layer_id}.filters);
     end
-    net.layers{layer_id}.filters = norm_5d(net.layers{layer_id}.filters); % normalize filters [and send them to a GPU]
+    if (size(net.layers{layer_id}.filters, 5) < net.layers{layer_id}.n_groups)
+      net.layers{layer_id}.filters = repmat(net.layers{layer_id}.filters,1,1,1,1,net.layers{layer_id}.n_groups);
+    end
     if (net.layers{layer_id}.gpu)
         net.layers{layer_id}.filters = gpuArray(net.layers{layer_id}.filters);
     end
@@ -127,11 +129,14 @@ for layer_id = 1:n_layers
         feature_length(layer_id+1) = size(fmaps_out_multi{layer_id},2);
         if (net.layers{1}.verbose), fprintf('layer %d feature maps: %dx%d \n', layer_id, n_samples, feature_length(layer_id+1)); end
     end
+    
     feature_length(1) = size(features{1},2);
+    filters{layer_id} = net.layers{layer_id}.filters;
+    net.layers{layer_id}.filters = [];
 end
 
-% Dimension reduction (optional)
-features = pca_whiten_wrap(cat(2,features{1},fmaps_out_multi{:}), net.layers{layer_id});
+% Dimensionality reduction (optional)
+features = pca_whiten_wrap(gather(cat(2,features{1},fmaps_out_multi{:})), net.layers{layer_id});
     
 fmaps_out = zeros(n_samples, size(features,2), 'single');
 if (net.layers{1}.verbose), fprintf('-> (multidict) feature maps: %dx%d (%s) \n', size(fmaps_out), class(fmaps_out)); end
@@ -142,7 +147,7 @@ for batch_id = 1:n_batches
     samples_ids = max(1,min(n_samples, (batch_id-1)*net.layers{1}.batch_size+1:batch_id*net.layers{1}.batch_size));
     features = feature_maps(samples_ids,:);
     fmaps_out_batch = zeros(length(samples_ids),sum(feature_length),'single');
-    if (net.layers{1}.gpu), features = gpuArray(features); end
+    if (net.layers{1}.gpu), features = gpuArray(features); fmaps_out_batch = gpuArray(fmaps_out_batch); end
     
     for layer_id = 1:n_layers
         
@@ -151,25 +156,27 @@ for batch_id = 1:n_batches
             features = local_fmaps_norm(features, net.layers{layer_id}.sample_size);
         end
         % process a single batch with an AutoCNN
-        [features, stats{layer_id}{batch_id}] = forward_pass_batch(features, net.layers{layer_id}.filters, net.layers{layer_id});
+        [features, stats{layer_id}{batch_id}] = forward_pass_batch(features, filters{layer_id}, net.layers{layer_id});
         % apply feature normalization for each sample (except for the last layer)
         if (~isempty(net.layers{layer_id}.norm) && layer_id < n_layers)
             features{1} = feature_scaling(features{1}, net.layers{layer_id}.norm);
         end
         if (net.layers{layer_id}.multidict)
-            fmaps_out_batch(:,sum(feature_length(1:layer_id))+1:sum(feature_length(1:layer_id+1))) = gather(features{2});
+            fmaps_out_batch(:,sum(feature_length(1:layer_id))+1:sum(feature_length(1:layer_id+1))) = features{2};
         end
         features = features{1};
     end
-    fmaps_out_batch(:,1:feature_length(1)) = gather(features);
+    
+    fmaps_out_batch(:,1:feature_length(1)) = features;
+    
     % normalize concatenated features
     if (~isempty(net.layers{layer_id}.norm))
         fmaps_out_batch = feature_scaling(fmaps_out_batch, net.layers{layer_id}.norm);
     end
+
+    % Dimensionality reduction (optional)
+    fmaps_out(samples_ids,:) = pca_whiten_wrap(gather(fmaps_out_batch), net.layers{layer_id});
     
-    % Dimension reduction (optional)
-    fmaps_out(samples_ids,:) = pca_whiten_wrap(fmaps_out_batch, net.layers{layer_id});
-        
     time = toc(time);
     if (net.layers{1}.verbose)
       if (mod(batch_id,net.layers{layer_id}.progress_print)==0), fprintf('batch %d/%d, %3.3f samples/sec \n', batch_id, n_batches, length(samples_ids)/time); end
@@ -189,26 +196,31 @@ if (nargout > 1)
         stds = []; % std values of all batches
         lcn_means = []; % LCN weighted standard deviations
         % filter responses mean, min and max values
+        feat_stds = [];
+        feat_stds2 = {};
         feat_means = [];
         feat_mins = [];
         feat_maxs = [];
         for batch=1:numel(stats{layer_id}) % collect for batches
             for group=1:numel(stats{layer_id}{batch}) % collect for groups
-                if (net.layers{layer_id}.norm_before_conv)
+                if (net.layers{layer_id}.batch_stand)
                   means(batch,group) = gather(stats{layer_id}{batch}{group}.mn);
                   stds(batch,group) = gather(stats{layer_id}{batch}{group}.sd);
                 end
                 lcn_means(batch,group) = gather(stats{layer_id}{batch}{group}.lcn_mn);
                 feat_means(batch,group) = gather(stats{layer_id}{batch}{group}.mean);
+                feat_stds(batch,group) = gather(stats{layer_id}{batch}{group}.std);
+                feat_stds2{batch,group} = gather(stats{layer_id}{batch}{group}.std2);
                 feat_mins(batch,group) = gather(stats{layer_id}{batch}{group}.min);
                 feat_maxs(batch,group) = gather(stats{layer_id}{batch}{group}.max);
             end
         end
+        feat_stds2 = mean(cat(3,feat_stds2{:}),3);
         stats{layer_id} = struct('mn', mean(means), 'sd', mean(stds), 'lcn_mn', mean(lcn_means),...
-            'feat_mean', mean(feat_means(:)), 'feat_min', mean(feat_mins(:)), 'feat_max', mean(feat_maxs(:)));
-        if (net.layers{1}.verbose), fprintf('layer %d: mn = %f, sd = %f, lcn_mn = %f, feat_mean = %f, feat_min = %f, feat_max = %f \n', ...
+            'feat_mean', mean(feat_means(:)), 'feat_std', mean(feat_stds(:)), 'feat_std2', feat_stds2, 'feat_min', mean(feat_mins(:)), 'feat_max', mean(feat_maxs(:)));
+        if (net.layers{1}.verbose), fprintf('layer %d: mean_input = %f, std_input = %f, lcn_mn = %f, feat_mean = %f, feat_std = %f, feat_min = %f, feat_max = %f \n', ...
             layer_id, mean(stats{layer_id}.mn), mean(stats{layer_id}.sd), mean(stats{layer_id}.lcn_mn), ...
-            stats{layer_id}.feat_mean, stats{layer_id}.feat_min, stats{layer_id}.feat_max); end
+            mean(stats{layer_id}.feat_mean), mean(stats{layer_id}.feat_std), stats{layer_id}.feat_min, stats{layer_id}.feat_max); end
         stats{layer_id}.output_size = stats_size{layer_id}{1}.output_size{1};
     end
 end
@@ -225,6 +237,7 @@ function [fmaps_out, stats] = forward_pass_batch(fmaps, filters, opts)
 
 n_samples = size(fmaps,1);
 opts.sample_size(opts.sample_size == 1) = [];
+
 fmaps = reshape(fmaps, [n_samples, opts.sample_size]);
 fmaps = fmaps(:,:,:,~opts.redundant_features);
 fmaps = permute(fmaps, [2,3,4,1]); % make suitable for matconvnet
@@ -242,10 +255,18 @@ if (opts.crop)
     cols = randi([1, 1+opts.sample_size(2)-opts.crop], 1, opts.batch_size);
   end
   for b=1:n_samples
-      fmaps_cropped{b} = fmaps(rows(b):rows(b)+opts.crop-1,cols(b):cols(b)+opts.crop-1,:,b);
+    f = fmaps(:,:,:,b);
+    if (rand > 0.5 && ~(any(opts.crop_offset)))
+      fmaps_cropped{b} = imresize(f,opts.crop/size(f,1));
+    else
+      if (isfield(opts,'rot') && opts.rot)
+        f = imrotate(f, randi([-10,10]), 'bilinear', 'crop');
+      end
+      f_tmp = f(rows(b):rows(b)+opts.crop-1,cols(b):cols(b)+opts.crop-1,:);
+      fmaps_cropped{b} = f_tmp;
+    end
   end
   fmaps = cat(4,fmaps_cropped{:});
-  fmaps_cropped = [];
 end
 
 % we prefer to do padding here (before feature scaling) instead of in vl_nnconv 
@@ -262,100 +283,112 @@ end
 % PREPROCESSING
 % treat the entire batch with all feature map groups as a single vector
 stats{1} = [];
-if (opts.norm_before_conv)
+if (opts.batch_stand)
   if (~isempty(opts.stats))
-      fmaps = feature_scaling(fmaps, 'stat', opts.stats.mn(1), opts.stats.sd(1));
+      fmaps = feature_scaling(fmaps, 'stat', opts.stats.mn(1), opts.stats.sd(1)*10);
   else
       [fmaps, stats{1}] = feature_scaling(fmaps, 'stat', []);
   end
-%   fmaps = vl_nnbnorm(fmaps, gpuArray(ones(1,sz_fmaps(3),'single')), gpuArray(zeros(1,sz_fmaps(3),'single')));
+  fmaps = fmaps./20;
 end
 if (~opts.is_vl)
     for d=opts.dims, fmaps = fft(fmaps,[],d); end
 end
 
-fmaps_out = cell(2,opts.n_groups);
-% Process in a loop because of overlapping connections (i.e. opts.n_groups*sz_filters(4) > sz_fmaps(3)) and
-% without the loop we have to use smaller (less efficient) batch_size to fit into GPU memory
-% This can be, probably, done faster
-for group=1:opts.n_groups
-    
-%     Divide feature map into groups according to connections
-%     for now connections are binarized (hard), but, in general, they can be soft
-%     fmaps_out{group} = bsxfun(@times, fmaps, permute(opts.connections(group,:),[3,1,2]));
-%     fmaps_out{group} = fmaps(:,:,sum(sum(sum(abs(fmaps_out{group}),1),2),4) > 1e-10,:);
+fmaps_out = cell(2,1);
 
-    % CONVOLUTION
-    fmaps_out{1,group} = conv_wrap(fmaps(:,:,opts.connections(group,:),:), filters(:,:,:,:,min(group,sz_filters(5))), opts);
-    % fmaps_out{group} is a 4d array: rows x cols x sz_filters(4) x n_samples
+% CONVOLUTION
+group = 1;
+if (opts.n_groups == 1)
+  b = [];
+  fmaps_out{1,group} = conv_wrap(fmaps, filters, b, opts);
+else
+  for i=1:opts.n_groups
+    fmaps_out{1,group}(:,:,(i-1)*sz_filters(4)+1:i*sz_filters(4),:) = conv_wrap(fmaps(:,:,opts.connections(i,:),:), filters(:,:,:,:,i), [], opts);
+  end
+end
+clear fmaps;
+clear filters;
 
-    % RECTIFICATION
-    if (strcmpi(opts.rectifier,'abs'))
-        fmaps_out{1,group} = abs(fmaps_out{1,group});
-    elseif (strcmpi(opts.rectifier,'relu'))
-        if (opts.is_vl)
-            fmaps_out{1,group} = vl_nnrelu(real(fmaps_out{1,group}), [], 'leak', opts.rectifier_leak);
-        else
-            fmaps_out{1,group} = real(fmaps_out{1,group}); % leak is ignored
-        end
-    elseif (strcmpi(opts.rectifier,'logistic'))
-        k = 0.4;
-        fmaps_out{1,group} = 1./(1+exp(-k.*real(fmaps_out{1,group})));
-    else
-        error('not supported rectifier type')
-    end
-
-    if (isempty(opts.stats))
-        stats{group} = stats{1};
-        stats{group}.max = gather(max(fmaps_out{1,group}(:)));
-        stats{group}.min = gather(min(fmaps_out{1,group}(:)));
-        stats{group}.mean = gather(mean(fmaps_out{1,group}(:)));
-    end
-
-    % Actual ReLU is here
-    fmaps_out{1,group} = max(opts.rectifier_param(1), min(opts.rectifier_param(2), fmaps_out{1,group}));
-    % the first cell {1,group} is the features that will be passed to the next layers
-
-    % POOLING with larger pooling size for the multidictionary features forward passed directly to a classifier
-    if (opts.multidict)
-        % the second cell {2,group} is the features that will be passed to a classifier (or PCA)
-        pool_size = opts.pool_size;
-        opts.pool_size = opts.pool_size_multidict;
-        if (opts.pruned)
-            % only supported for a 2 layer network
-            fmaps_out{2,group} = fmaps_out{1,group}(:,:,sum(opts.connections_next,1) > max(opts.connections_next(:))*1e-5,:);
-            fmaps_out{2,group} = pool_wrap(fmaps_out{2,group}, opts); 
-        else
-            fmaps_out{2,group} = pool_wrap(fmaps_out{1,group}, opts); % propagate all features
-        end
-        opts.pool_size = pool_size;
-    end
-
-    % Local contrast normalization (LCN) for the features forward passed to the next layer
-    if (opts.lcn)
-        if (isempty(opts.connections_next))
-            connections = true(size(fmaps_out{1,group},3),1); % LCN for all feature maps
-        else
-            % LCN only for those features connected to the next layer
-            connections = sum(opts.connections_next,1) > max(opts.connections_next(:))*1e-5;
-        end
-        if (nnz(connections) <= 1), error('connections are invalid'); end
-        if (~isempty(opts.stats))
-            fmaps_out{1,group}(:,:,connections,:) = lcn(fmaps_out{1,group}(:,:,connections,:), opts.stats.lcn_mn(group), opts.is_vl); 
-        else
-            [fmaps_out{1,group}(:,:,connections,:), stats{group}.lcn_mn] = lcn(fmaps_out{1,group}(:,:,connections,:), [], opts.is_vl);
-        end
-    else
-        stats{group}.lcn_mn = nan;
-    end
-    
-    % POOLING (regular)
-    fmaps_out{1,group} = pool_wrap(fmaps_out{1,group}, opts); 
+if (isempty(opts.stats))
+    stats{group} = stats{1};
+    stats{group}.max = gather(max(fmaps_out{1,group}(:)));
+    stats{group}.min = gather(min(fmaps_out{1,group}(:)));
+    stats{group}.mean = gather(mean(fmaps_out{1,group}(:)));
+    stats{group}.std = gather(std(fmaps_out{1,group}(:))*(sqrt(numel(fmaps_out{1,group}))));
+    a = std(std(std(fmaps_out{1,group},0,1),0,2),0,4);
+    stats{group}.std2 = squeeze(gather(a));
 end
 
-% Concatenate all groups
-for k=1:size(fmaps_out,1), fmaps_out{k,1} = cat(3,fmaps_out{k,:}); end % 4d array: rows x cols x sz_filters(4)*opts.n_groups x n_samples
-fmaps_out = fmaps_out(:,1);
+% RECTIFICATION
+if (strcmpi(opts.rectifier,'abs'))
+    fmaps_out{1,group} = abs(fmaps_out{1,group});
+elseif (strcmpi(opts.rectifier,'logistic'))
+    k = 0.4;
+    fmaps_out{1,group} = 1./(1+exp(-k.*real(fmaps_out{1,group})));
+elseif (strcmpi(opts.rectifier,'tanh'))
+    fmaps_out{1,group} = tanh(fmaps_out{1,group});
+end
+
+fmaps_out{1,group} = pool_wrap(fmaps_out{1,group}, opts);
+
+% ReLU here for speed up
+if (strcmpi(opts.rectifier,'relu'))
+  if (opts.is_vl)
+      fmaps_out{1,group} = vl_nnrelu(real(fmaps_out{1,group}), [], 'leak', opts.rectifier_leak);
+  else
+      fmaps_out{1,group} = real(fmaps_out{1,group}); % leak is ignored
+  end
+end
+
+% Parametric ReLU
+fmaps_out{1,group} = max(opts.rectifier_param(1), min(opts.rectifier_param(2), fmaps_out{1,group}));
+
+% the first cell {1,group} is the features that will be passed to the next layers
+
+% POOLING with larger pooling size for the multidictionary features forward passed directly to a classifier
+if (opts.multidict)
+    % the second cell {2,group} is the features that will be passed to a classifier (or PCA)
+    opts.pool_pad = 0;
+    if (~isfield(opts,'pool_size_multidict'))
+      opts.pool_size = size(fmaps_out{1,group},1);
+      opts.pool_stride = opts.pool_size;
+      opts.pool_op = 'avg';
+      fmaps_out{2,group} = pool_wrap(fmaps_out{1,group}, opts);
+    else
+      opts.pool_size = opts.pool_size_multidict;
+      if (~isfield(opts,'pool_stride_multidict'))
+          opts.pool_stride_multidict = opts.pool_size_multidict;
+      end
+      opts.pool_stride = opts.pool_stride_multidict;
+      if (opts.pruned)
+          % only supported for a 2 layer network
+          fmaps_out{2,group} = fmaps_out{1,group}(:,:,sum(opts.connections_next,1) > max(opts.connections_next(:))*1e-5,:);
+          fmaps_out{2,group} = pool_wrap(fmaps_out{2,group}, opts); 
+      else
+          fmaps_out{2,group} = pool_wrap(fmaps_out{1,group}, opts); % propagate all features
+      end
+    end
+end
+
+% Local contrast normalization (LCN) for the features forward passed to the next layer
+if (opts.lcn)
+    if (isempty(opts.connections_next))
+        connections = true(size(fmaps_out{1,group},3),1); % LCN for all feature maps
+    else
+        % LCN only for those features connected to the next layer
+        connections = sum(opts.connections_next,1) > max(opts.connections_next(:))*1e-5;
+    end
+    if (nnz(connections) <= 1), error('connections are invalid'); end
+    if (~isempty(opts.stats))
+        fmaps_out{1,group}(:,:,connections,:) = lcn(fmaps_out{1,group}(:,:,connections,:), opts.stats.lcn_mn(group), opts.is_vl, opts.lcn_sigma); 
+    else
+        [fmaps_out{1,group}(:,:,connections,:), stats{group}.lcn_mn] = lcn(fmaps_out{1,group}(:,:,connections,:), [], opts.is_vl, opts.lcn_sigma);
+    end
+else
+    stats{group}.lcn_mn = nan;
+end
+
 fmaps_out(cellfun(@isempty,fmaps_out)) = [];
 if (isempty(opts.stats))
     stats{1}.output_size = cellfun(@size,fmaps_out,'UniformOutput',false);
@@ -370,13 +403,14 @@ end
 end
 
 % Convolution wrapper for convenience
-function fmaps = conv_wrap(fmaps, filters, opts)
+function fmaps = conv_wrap(fmaps, filters, bias, opts)
 if (opts.is_vl)
     % using Matconvnet
     if (isreal(filters))
-        fmaps = vl_nnconv(fmaps, filters, [], 'stride', opts.conv_stride);
+        fmaps = vl_nnconv(fmaps, filters, bias, 'stride', opts.conv_stride);
     else
-        fmaps = vl_nnconv(fmaps, real(filters), [], 'stride', opts.conv_stride) + 1i.*vl_nnconv(fmaps, imag(filters), [], 'stride', opts.conv_stride);
+        fmaps = vl_nnconv(fmaps, real(filters), bias./2, 'stride', opts.conv_stride) + ...
+          1i.*vl_nnconv(fmaps, imag(filters), bias./2, 'stride', opts.conv_stride);
     end
 else
     % using Matlab in the frequency domain
@@ -385,8 +419,9 @@ else
     sz = size(fmaps);
     offset = floor((sz(1:2) - opts.sample_size(1:2))./2);
     fmaps = squeeze(sum(fmaps(offset(1)+1:end-offset(1),offset(2)+1:end-offset(2),:,:,:),3));
+    fmaps = bsxfun(@sum, fmaps, bias);
 end
-
+% fmaps = max(0,fmaps).^0.5;
 end
 
 % Pooling wrapper for convenience
@@ -399,7 +434,7 @@ if (isfield('opts','pool_fn') && ~isempty(opts.pool_fn))
 elseif (~opts.is_vl)
     fmaps = pool_disjoint(fmaps, opts.pool_size, opts.pool_pad, opts.pool_op);
 else
-    fmaps = vl_nnpool(fmaps, opts.pool_size, 'stride', opts.pool_size, 'pad', opts.pool_pad, 'method', opts.pool_op);
+    fmaps = vl_nnpool(fmaps, opts.pool_size, 'stride', opts.pool_stride, 'pad', opts.pool_pad, 'method', opts.pool_op);
 end
 
 end
@@ -445,20 +480,6 @@ end
 % reshape back to vectors
 fmaps = reshape(permute(reshape(fmaps, [sz(1),sz(end)/n,n]),[1,3,2]),[sz(1),n,sz(end)/n]);
 fmaps = reshape(fmaps,sz);
-
-end
-
-% Normalizes filters
-function filters = norm_5d(filters)
-for group=1:size(filters,5)
-    for k=1:size(filters,4)
-        f = filters(:,:,:,k,group);
-        if (std(f(:)) < 1e-10)
-            error('filter might be blank')
-        end
-        filters(:,:,:,k,group) = f./norm(f(:));
-    end
-end
 
 end
 
@@ -522,6 +543,9 @@ end
 if (~isfield(opts,'pool_size'))
     opts.pool_size = 2; % pooling size
 end
+if (~isfield(opts,'pool_stride'))
+    opts.pool_stride = opts.pool_size; % pooling pool_stride
+end
 if (~isfield(opts,'pool_op'))
     opts.pool_op = 'max'; % pooling type
 end
@@ -544,8 +568,11 @@ end
 if (~isfield(opts,'crop_offset'))
     opts.crop_offset = 0; % >0 to take crops with specified offsets (for the test samples only)
 end
-if (~isfield(opts,'norm_before_conv'))
-    opts.norm_before_conv = true; % true to standardize features before convolution
+if (~isfield(opts,'batch_stand'))
+    opts.batch_stand = true; % true to standardize features before convolution
+end
+if (~isfield(opts,'lcn_sigma'))
+    opts.lcn_sigma = 2; % for LCN
 end
 
 end

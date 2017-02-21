@@ -40,6 +40,9 @@ fprintf('dataset %s: \n', upper('statistics'))
 fprintf('training id min = %d, max = %d \n', min(train_ids), max(train_ids))
 print_data_stats(data_train, data_test);
 
+% for large features call an SVM classifier (liblinear) from this script
+inplace_classifier = strcmpi(opts.classifier,'liblinear') && (net.layers{1}.augment || opts.n_train > 3e4) && (isempty(opts.PCA_dim) || opts.PCA_dim <= 0);
+
 if (strcmpi(opts.dataset,'stl10') && opts.fold_id > 1 && ~opts.val)
 %% STL-10 code for folds 2-10
     fprintf('\n-> processing %s samples \n', upper('training'))
@@ -51,17 +54,48 @@ if (strcmpi(opts.dataset,'stl10') && opts.fold_id > 1 && ~opts.val)
         train_labels = data_train.labels;
     end
     repeat = 1;
-    if (net.layers{1}.crop), repeat = 10; end
-    train_labels = repmat(train_labels,repeat,1);
+    if (net.layers{1}.crop)
+      repeat = opts.crop_repeat;
+    end
     train_features = forward_pass(repmat(data_train.images,repeat,1), net);
+    if (net.layers{1}.augment && net.layers{1}.crop)
+      net.layers{1}.rot = 1;
+      train_features = cat(1,train_features,forward_pass(repmat(data_train.images,5,1), net));
+      net.layers{1}.rot = 0;
+      train_labels = repmat(train_labels,repeat+5,1);
+    else
+      train_labels = repmat(train_labels,repeat,1);
+    end
+    clear data_train
     fprintf('\n-> %s with %s \n', upper('classification'), upper(opts.classifier));
-    [test_results.acc, test_results.scores, test_results.predicted_labels] = ...
-        classifier_committee(train_features, opts.test_features, train_labels, data_test.labels, opts);
+    if (inplace_classifier)
+        % for large features
+        if (~isempty(opts.norm))
+            train_features = feature_scaling(train_features, opts.norm);
+        end
+        [B,C] = cross_val(sparse(double(train_features(1:opts.n_train,:))), train_labels(1:opts.n_train), opts);
+        train_features = sparse(double(train_features));
+        model = train(train_labels, train_features, sprintf('-s 1 -q -c %f -B %f', C, B));
+        clear train_features
+        test_results.scores = predict_batches(opts.test_features, repmat(data_test.labels,size(opts.test_features,1)/length(data_test.labels),1), data_test.labels, unique(data_test.labels), model, @predict, opts);
+        [~,idx] = max(test_results.scores,[],2);
+        for i=1:length(idx)
+            idx(i) = model.Label(idx(i));
+        end
+        test_results.predicted_labels = idx;
+        test_results.acc(1,1) = nnz(idx == data_test.labels)/numel(data_test.labels)*100;
+        test_results.acc(2,1) = test_results.acc(1,1);
+        fprintf('Accuracy of a single classifier model = %f (%d/%d)\n', test_results.acc(1), nnz(idx == data_test.labels), length(data_test.labels))
+    else
+        [test_results.acc, test_results.scores, test_results.predicted_labels] = ...
+            classifier_committee(train_features, opts.test_features, train_labels, data_test.labels, opts);
+    end
     test_results = save_data(test_results, net, opts);
     return;
 end
 
 %% Learn filters and connections
+stats = {};
 for layer_id=1:numel(net.layers), net.layers{layer_id}.stats = []; net.layers{layer_id}.PCA_matrix = []; end
 train_features = data_train.unlabeled_images; % use non whitened images to learn filters
 for layer_id=1:numel(net.layers)
@@ -73,7 +107,15 @@ for layer_id=1:numel(net.layers)
     end
     if (~isfield(net.layers{layer_id},'filters') || isempty(net.layers{layer_id}.filters))
         fprintf('learning %s for layer %d\n', upper('filters'), layer_id)
+        if (layer_id < numel(net.layers))
+          net.layers{layer_id}.filter_size_next = net.layers{layer_id+1}.filter_size;
+        end
         net.layers{layer_id}.filters = learn_filters_unsup(train_features, net.layers{layer_id});
+        if (layer_id == 3 && net.layers{layer_id}.n_filters >= 1000 && net.layers{layer_id-1}.n_filters < 500 && net.layers{layer_id}.n_groups > 8)
+            % in this case, values for layer 3 features appear to be too large, so we do
+            % this trick (which is not good and should be fixed)
+            net.layers{layer_id}.filters{1} = net.layers{layer_id}.filters{1}./1.5;
+        end
     else
         warning('learning filters for layer %d is skipped ', layer_id)
     end
@@ -82,10 +124,8 @@ for layer_id=1:numel(net.layers)
         if (layer_id == 1)
             train_features = data_train.unlabeled_images_whitened; % use whitened images to obtain feature maps
         end
-        [train_features,stats] = forward_pass(train_features, struct('layers',net.layers{layer_id}));
-        if (layer_id < numel(net.layers))
-            net.layers{layer_id+1}.sample_size = stats{1}.output_size;
-        end
+        [train_features,stats{layer_id}] = forward_pass(train_features, struct('layers',net.layers{layer_id}));
+        net.layers{layer_id+1}.sample_size = stats{layer_id}{end}.output_size;
     end
 end
 
@@ -95,17 +135,18 @@ fprintf('\nlearning %s and %s for %d layers done \n', upper('connections'), uppe
 %% Forward pass for the first N training or unlabeled samples
 for layer_id=1:numel(net.layers), net.layers{layer_id}.stats = []; net.layers{layer_id}.PCA_matrix = []; end
 fprintf('\n-> processing %s samples \n', upper('training (unlabeled)'))
-[train_features, stats] = forward_pass(data_train.unlabeled_images_whitened, net);
+n = min(size(data_train.unlabeled_images_whitened,1),10e3);
+[train_features, stats] = forward_pass(data_train.unlabeled_images_whitened(1:n,:), net);
 opts.PCA_dim(opts.PCA_dim > size(train_features,2)) = [];
     
-%% Dimension reduction (PCA) for groups of feature maps
+%% Dimensionality reduction (PCA) for groups of feature maps
 opts.pca_mode = 'pcawhiten';
 if (~isfield(opts,'pca_fast') || isempty(opts.pca_fast))
     opts.pca_fast = true;
 end
 n_max_pca = 7*10^5; % depends on your RAM and the number of unlabeled samples
 if (size(train_features,2) > n_max_pca)
-    fprintf('\n-> %s for groups of feature maps \n', upper('dimension reduction'))
+    fprintf('\n-> %s for groups of feature maps \n', upper('dimensionality reduction'))
     % perform PCA for the last layer feature map groups independently
     % reshape features to divide them according to the groups
     sz = [net.layers{end}.sample_size(1:2)./net.layers{end}.pool_size, net.layers{end}.n_filters, net.layers{end}.n_groups];
@@ -152,17 +193,40 @@ else
 end
 
 repeat = 1;
-if (net.layers{1}.crop), repeat = 10; end
-train_labels = repmat(train_labels,repeat,1);
+if (net.layers{1}.crop)
+  repeat = opts.crop_repeat;
+end
 
-n = min(size(data_train.unlabeled_images_whitened,1),size(data_train.images,1));
-if (norm(data_train.unlabeled_images_whitened(1:n,:) - data_train.images(1:n,:)) > 1e-10)
-    fprintf('\n-> processing %s samples \n', upper('training'))
-    train_features = forward_pass(repmat(data_train.images,repeat,1), net);
-elseif (size(data_train.images,1) > size(data_train.unlabeled_images_whitened,1))
-    fprintf('\n-> processing the rest of %s samples \n', upper('training'))
-    error('this mode is not tested')
-    train_features = cat(1,train_features,forward_pass(data_train.images(n+1:end,:), net));
+fprintf('\n-> processing %s samples \n', upper('training'))
+train_features = forward_pass(repmat(data_train.images,repeat,1), net);
+if (net.layers{1}.augment && net.layers{1}.crop)
+  net.layers{1}.rot = 1;
+  train_features = cat(1,train_features,forward_pass(repmat(data_train.images,5,1), net));
+  net.layers{1}.rot = 0;
+  train_labels = repmat(train_labels,repeat+5,1);
+else
+  train_labels = repmat(train_labels,repeat,1);
+end
+
+clear data_train
+%% Dimensionality reduction (PCA)
+if (~isempty(opts.PCA_dim) && max(opts.PCA_dim) > 0 && size(train_features,2) > max(opts.PCA_dim))
+    fprintf('\n-> %s \n', upper('dimensionality reduction'))
+    opts.pca_dim = min(size(train_features,2),max(opts.PCA_dim));
+    opts.verbose = true;
+    [~, PCA_matrix, data_mean, L_regul] = pca_zca_whiten(train_features(1:min(10^4,size(train_features,1)),:), opts);
+    train_features = pca_zca_whiten(train_features, opts, PCA_matrix, data_mean, L_regul);
+end
+if (~isempty(opts.norm))
+    train_features = feature_scaling(train_features, opts.norm);
+end
+
+if (inplace_classifier)
+    % for large features learn linear SVM right here
+    [B,C] = cross_val(sparse(double(train_features(1:min(10^4,opts.n_train),:))), double(train_labels(1:min(10^4,opts.n_train))), opts);
+    train_features = sparse(double(train_features));
+    model = train(train_labels, train_features, sprintf('-s 1 -q -c %f -B %f', C, B));
+    clear train_features
 end
 
 fprintf('\n-> processing %s samples \n', upper('test'))
@@ -184,20 +248,34 @@ else
   test_features = forward_pass(data_test.images, net);
 end
 
-%% Dimension reduction (PCA)
+%% Dimensionality reduction (PCA)
 if (~isempty(opts.PCA_dim) && max(opts.PCA_dim) > 0 && size(train_features,2) > max(opts.PCA_dim))
-    fprintf('\n-> %s \n', upper('dimension reduction'))
-    opts.pca_dim = min(size(train_features,2),max(opts.PCA_dim));
-    opts.verbose = true;
-    [~, PCA_matrix, data_mean, L_regul] = pca_zca_whiten(train_features(1:min(10^4,size(train_features,1)),:), opts);
-    train_features = pca_zca_whiten(train_features, opts, PCA_matrix, data_mean, L_regul);
+    fprintf('\n-> %s \n', upper('dimensionality reduction'))
     test_features = pca_zca_whiten(test_features, opts, PCA_matrix, data_mean, L_regul);
+end
+if (~isempty(opts.norm))
+    test_features = feature_scaling(test_features, opts.norm);
 end
 
 %% Classification
 fprintf('\n-> %s with %s \n', upper('classification'), upper(opts.classifier));
-[test_results.acc, test_results.scores, test_results.predicted_labels] = ...
-    classifier_committee(train_features, test_features, train_labels, data_test.labels, opts);
+
+if (inplace_classifier)
+    % for large features
+    test_results.scores = predict_batches(test_features, repmat(data_test.labels,size(test_features,1)/length(data_test.labels),1), data_test.labels, unique(data_test.labels), model, @predict, opts);
+    [~,idx] = max(test_results.scores,[],2);
+    for i=1:length(idx)
+        idx(i) = model.Label(idx(i));
+    end
+    test_results.predicted_labels = idx;
+    test_results.acc(1,1) = nnz(idx == data_test.labels)/numel(data_test.labels)*100;
+    test_results.acc(2,1) = test_results.acc(1,1);
+    fprintf('Accuracy of a single classifier model = %f (%d/%d)\n', test_results.acc(1), nnz(idx == data_test.labels), length(data_test.labels))
+    test_results.svm_params = [];
+else
+    [test_results.acc, test_results.scores, test_results.predicted_labels, test_results.svm_params] = ...
+        classifier_committee(train_features, test_features, train_labels, data_test.labels, opts);
+end
 test_results.net = net;
 
 %% Save data
@@ -205,23 +283,24 @@ test_results = save_data(test_results, net, opts, test_features);
 
 end
 
-function net = prune_net(net)
-  if (numel(net.layers) > 1 && (~isfield(net.layers{1},'shared_filters') || net.layers{1}.shared_filters))
-    filters = cell(1,numel(net.layers));
-    connections = cell(1,numel(net.layers));
-    for layer = 1:numel(net.layers)-1
-      ids = find(sum(net.layers{layer+1}.connections)>0);
-      connections{layer+1} = false(size(net.layers{layer+1}.connections,1),length(ids));
-      for group=1:size(net.layers{layer+1}.connections,1)
-        ids_new = find(ismember(ids,find(net.layers{layer+1}.connections(group,:))));
-        connections{layer+1}(group,ids_new) = true;
-      end
-      filters{layer} = net.layers{layer}.filters{1}(:,:,:,ids);
-      net.layers{layer}.filters{1} = filters{1};
-      net.layers{layer+1}.connections = connections{layer+1};
-      net.layers{layer+1}.sample_size(end) = length(ids);
-    end
-  end
+function [B,C] = cross_val(train_data_dim_cv, train_labels, opts)
+
+if isfield(opts,'dataset') && strcmpi(opts.dataset,'mnist')
+    [C_val,B_val] = meshgrid([1e-4,2e-4,4e-4,8e-4,16e-4,32e-4],[0,3,5])
+else
+    [C_val,B_val] = meshgrid([1e-4,2e-4,4e-4,8e-4],[0,3,5])
+end
+acc_cv = [];
+for k=1:numel(C_val)
+    fprintf('%d/%d, C=%f,B=%f \n', k, numel(C_val), C_val(k), B_val(k))
+    acc_cv(k) = train(train_labels, train_data_dim_cv, sprintf('-v 5 -s 1 -q -c %f -B %f', C_val(k), B_val(k)));
+end
+clear train_data_dim_cv
+[~,k] = max(acc_cv);
+C = C_val(k(1));
+B = B_val(k(1));
+fprintf('best C = %f and B = %f \n', C, B)
+
 end
 
 function test_results = save_data(test_results, net, opts, test_features)
@@ -245,6 +324,13 @@ try
           if (isfield(net.layers{layer_id},'L_regul')), L_regul{layer_id} = net.layers{layer_id}.L_regul; net.layers{layer_id}.L_regul = []; end
       end
     end
+    
+    if ~(strcmpi(opts.dataset,'stl10') && opts.n_folds > 1 && ~opts.val)
+        for layer_id=1:numel(net.layers) 
+          net.layers{layer_id}.filters = [];
+        end
+    end
+    
     test_results.opts = opts;
     if (opts.n_folds > 1)
         if (opts.fold_id > 1)
@@ -271,6 +357,9 @@ try
       test_results.predicted_labels = [];
     end
     if (opts.save_test)
+        if opts.fold_id == 10
+            test_results.net = []; % too large to keep
+        end
       save(test_file_name,'-struct','test_results','-v7.3')
     end
 catch e 
@@ -397,7 +486,7 @@ D = pdist2(data_train.images(randperm(size(data_train.images,1),n),:),...
 m = min(D(:));
 fprintf('min distance between 1k random training and test samples: %3.3f \n', m)
 if (m < 1e-5)
-    error('training and test samples might overlap')
+    warning('training and test samples might overlap')
 end
 n = min([1000, size(data_train.unlabeled_images,1), size(data_test.images,1)]);
 D = pdist2(data_train.unlabeled_images(randperm(size(data_train.unlabeled_images,1),n),:),...

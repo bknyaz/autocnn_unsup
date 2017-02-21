@@ -3,8 +3,6 @@
 % However, consider the following parameters to improve speed and classification accuracy:
 % opts.matconvnet (optional, recommended) - path to the MatConvNet root directory, e.g, /home/code/3rd_party/matconvnet
 % opts.vlfeat (optional, recommended) - path to the VLFeat mex directory, e.g, /home/code/3rd_party/vlfeat/toolbox/mex/mexa64
-% opts.gtsvm (optional, recommended) - path to the GTSVM mex directory, e.g, /home/code/3rd_party/gtsvm/mex
-% opts.libsvm (optional) - path to the LIBSVM root directory, e.g, /home/code/3rd_party/libsvm/matlab
 %
 % opts.n_train (optional) - number of labeled training samples (default: full test)
 % opts.arch (optional) - network architecture (default: large 2 layer network)
@@ -36,11 +34,8 @@ end
 if (~isfield(opts,'batch_size'))
   opts.batch_size = 100;
 end
-if (~isfield(opts,'rectifier_param'))
-  opts.rectifier_param = [0.25,25];
-end
 if (~isfield(opts,'rectifier'))
-  opts.rectifier = {'relu','abs','abs'};
+  opts.rectifier = {'relu','abs','abs','abs'};
 end
 if (~isfield(opts,'conv_norm'))
   opts.conv_norm = 'rootsift';
@@ -99,6 +94,11 @@ for fold_id = 1:opts.n_folds
     [data_train, data_test] = load_CIFAR_data(opts); % load random folds for cross-validation
   end
 
+  % in case we want fixed training samples (for a committee)
+  if (isfield(opts,'train_ids') && ~isempty(opts.train_ids))
+    data_train.images = data_train(opts.train_ids{fold_id},:);
+    data_train.labels = data_train.labels(opts.train_ids{fold_id});
+  end
   test_results = autocnn_unsup(data_train, data_test, net, opts);
 
   fprintf('test took %5.3f seconds \n', etime(clock,time_start));
@@ -203,11 +203,10 @@ else
   end
 end
 
-% we use the first 4k-10k samples as unlabeled data, it's enough to learn filters and connections and perform PCA
-if (opts.n_train >= 50e3)
-  unlabeled_ids = 1:4e3;
+if (opts.val)
+    unlabeled_ids = 1:opts.n_train;
 else
-  unlabeled_ids = 1:10e3;
+    unlabeled_ids = 1:20e3;
 end
 data_train.unlabeled_images = data_train.unlabeled_images(unlabeled_ids,:);
 data_train.unlabeled_images_whitened = data_train.images(unlabeled_ids,:);

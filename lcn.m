@@ -1,4 +1,4 @@
-function [x_ijk, c] = lcn(x_ijk, c, is_vl)
+function [x_ijk, c] = lcn(x_ijk, c, is_vl, sigma_coef)
 % Local contrast normalization
 % according to Jarrett et al. "What is the Best Multi-Stage Architecture for Object Recognition?"
 % i - feature map index
@@ -13,10 +13,13 @@ sz = size(x_ijk);
 if (length(sz) < 3), sz(3) = 1; end
 if (length(sz) < 4), sz(4) = 1; end
 
-sigma = 2; %ceil(sz(1)/16); % Gaussian window sigma
+sigma = sz(1)/16; % Gaussian window sigma (decrease the value to increase speed)
 
+if (mod(round(sigma*4+1),2) == 0)
+  sigma = sigma+0.25; % to make size of w_pq non even
+end
 % initialize a Gaussian weighting window
-w_pq = repmat(single(fspecial('gaus', round(sigma*4+1), sigma*1.5)), [1,1,sz(3)]); % sum(w(:)) = sz(3)
+w_pq = repmat(single(fspecial('gaus', round(sigma*4+1), sigma*sigma_coef)), [1,1,sz(3)]); % sum(w(:)) = sz(3)
 w_pq = w_pq./sz(3); % so that sum for all windows = 1, sum_ipq(w) = 1
 if (gpu), w_pq = gpuArray(w_pq); end
 
