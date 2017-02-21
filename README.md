@@ -1,15 +1,8 @@
-## Update
-This version of scripts is kept for reference. The new version implementing an AutoCNN is available at [autocnn_unsup_v2] (https://github.com/bknyaz/autocnn_unsup_v2). There is also simple [Python code] (https://github.com/bknyaz/autocnn_unsup_py) to learn filters with recursive autoconvolution and k-means.
-
 # autocnn_unsup
-Matlab scripts implementing the model from our work 
-[`Autoconvolution for Unsupervised Feature Learning`] (http://arxiv.org/abs/1606.00611) 
-on unsupervised layer-wise training of a convolution neural network based on recursive autoconvolution (AutoCNN).
+Matlab scripts implementing the model from "Recursive Autoconvolution for Unsupervised Learning of Convolutional Neural Networks" accepted to IJCNN-2017. There is the [`previous version of this paper`] (http://arxiv.org/abs/1606.00611).
+There is also simple [Python code] (https://github.com/bknyaz/autocnn_unsup_py) to learn filters with recursive autoconvolution and k-means.
 
-We present scripts for MNIST ([autocnn_mnist.m] (autocnn_mnist.m)), CIFAR-10 (CIFAR-100) ([autocnn_cifar.m] (autocnn_cifar.m)) 
-and STL-10 ([autocnn_stl10.m] (autocnn_stl10.m)). 
-Our slighly optimized scripts are much faster (see Tables below) than those used to produce results in the paper. 
-Moreover, the classification results are also a little bit improved.
+We present scripts for MNIST ([autocnn_mnist.m] (autocnn_mnist.m)), CIFAR-10 (CIFAR-100) ([autocnn_cifar.m] (autocnn_cifar.m)) and STL-10 ([autocnn_stl10.m] (autocnn_stl10.m)).
 
 ## Example of running
 ```matlab
@@ -18,10 +11,11 @@ opts.vlfeat = 'home/code/3rd_party/vlfeat/toolbox/mex/mexa64';
 opts.gtsvm = '/home/code/3rd_party/gtsvm/mex';
 opts.n_folds = 10;
 opts.n_train = 4000;
-opts.arch = '1024c11-2p-conv0_4__256g-4ch-160c9-4p-conv2_3';
-autocnn_cifar(opts, 'augment', true)
+opts.PCA_dim = 1500;
+opts.arch = '1024c5-3p-conv0_3__32g-32ch-256c5-3p-conv0_2__32g-256ch-1024c5-3p-conv0_2';
+autocnn_cifar(opts, 'learning_method', {'kmeans','pca','pca'}, 'augment', true)
 ```
-This script should obtain an average accuracy of about 78.5% on CIFAR-10 (400).
+This script should obtain an average accuracy of about 79.4% on CIFAR-10 (400).
 
 ## Requirements
 For faster filter learning it's recommended to use [VLFeat] (http://www.vlfeat.org/), and for faster forward 
@@ -37,7 +31,7 @@ both in GTSVM and LIBSVM.
 If neither of these is available, the code will use Matlab's [LDA] (http://www.mathworks.com/help/stats/fitcdiscr.html).
 
 ## Learning methods
-Currently, the supported unsupervised learning methods are k-means, [convolutional k-means] (conv_kmeans.m), k-medoids, GMM, PCA, [ICA and ISA] (ica.m).
+Currently, the supported unsupervised learning methods are k-means, [convolutional k-means] (conv_kmeans.m), k-medoids, GMM, [PCA] (pca_zca_whiten.m), [ICA and ISA] (ica.m).
 We use VLFeat's k-means to obtain our results.
 
 ## Testing environment
@@ -54,13 +48,9 @@ We use VLFeat's k-means to obtain our results.
 
 ## Results
 - So far, the model is purely unsupervised, i.e., label information is not used to train filters.
-- Also, no data augmentation and no cropping is applied, other than horizontal flipping when specified (see Tables below).
 - **flip** - indicates that flipping (horizontal reflection, mirroring) is applied both for training and test samples.
+ - **augment** - indicates taking random crops, flipping, rotation and scaling.
 - We report 2 results (in table cells): with a single SVM / SVM committee.
-- For 2 layers, an average number of filters used after prunning is indicated in layer 1 
-(i.e., 90 instead of 192, or 650 instead of 1024), see the paper for details.
-
-We have minor fixes in code, so the results are updated according to the current version of the code.
 
 ### MNIST
 Test error (%) on MNIST (100), MNIST (300) with 100 or 300 labeled images per class, and using all (60k) MNIST training data (full test).
@@ -71,7 +61,7 @@ In our paper, the results on MNIST were obtained using LIBSVM. Here, we use GTSV
 Model           | MNIST (100)   |MNIST (300)    | MNIST         | MNIST (total time for 1 full test)
 -------         |:--------:     |:--------:     |:--------:     |:--------:
 256c13          | 2.15 / 2.00   | 1.41 / 1.31   | 0.46 / 0.45   | 1 min / 2 min
-90c11-32g-64c9  | 1.58 / 1.54   | 0.94 / 0.93   | 0.40 / 0.39   | 6 min / 8.5 min
+192c11-32g-64c9  | 1.58 / 1.54   | 0.94 / 0.93   | 0.40 / 0.39   | 6 min / 8.5 min
 
 For MNIST we observe a very large variance of the classification error.
 Among 10 runs on full MNIST, our minimum error with a single SVM (PCA = 350) was **0.33%**, with an SVM committee - **0.34%**. 
@@ -91,14 +81,17 @@ Model                       | CIFAR-10 (400)    | CIFAR-10
 -------|:--------:|:--------:
 1024c13                     | 69.6 / 71.8       | 81.7 / 83.4
 1024c13+**flip**            | 72.6 / 74.6       | 84.1 / 85.3
-650c11-256g-160c9           | 74.2 / 76.4       | 84.8 / 85.6       (1 test)
-650c11-256g-160c9+**flip**  | **76.9 / 78.5**   | **86.9 / 87.3**   (1 test)
+1024c11-256g-160c9           | 74.2 / 76.4      | 84.8 / 85.6       (1 test)
+1024c11-256g-160c9+**flip**  | 76.9 / 78.5      | 86.9 / 87.3   (1 test)
+1024c5-32g-256c5-32g-1024c5+**augment** | **79.4** / -  | **87.9** / - (1 test)
 
 Full definitions of architectures are following:
 
 1 layer: `1024c13-8p-conv0_4`
 
 2 layers: `1024c11-2p-conv0_3__Ng-4ch-160c9-4p-conv2_3`
+
+3 layers: `1024c5-3p-conv0_3__32g-32ch-256c5-3p-conv0_2__32g-256ch-1024c5-3p-conv0_2`
 
 ##### Timings
 Approximate total (training+prediction) time for 1 test. 
@@ -108,8 +101,8 @@ Model                       | CIFAR-10 (400)        | CIFAR-10              | CI
 -------|:--------:|:--------:|:--------:
 1024c13                     | **3 min / 3.5 min**   | **4.5 min / 15 min**  | **9 sec / 18 sec**
 1024c13++**flip**           | **3 min** / 4 min     | 6 min / 25 min        | 17 sec / 48 sec
-650c11-256g-160c9           | 29 min / 30 min       | 40 min / 70 min       | 3.7 min / 4.2 min
-650c11-256g-160c9+**flip**  | 30 min / 31.5 min     | 65 min / 130 min      | 7.5 min / 9 min
+1024c11-256g-160c9           | 29 min / 30 min       | 40 min / 70 min       | 3.7 min / 4.2 min
+1024c11-256g-160c9+**flip**  | 30 min / 31.5 min     | 65 min / 130 min      | 7.5 min / 9 min
 
 Our SVM committee is several times cheaper computationally compared to a more traditional form of a committee 
 (i.e., when a model is trained from scratch several times).
@@ -146,9 +139,9 @@ Model                       | CIFAR-100     			| CIFAR-100 (total time for 1 ful
 -------|:--------:|:--------:
 1024c13                     | 56.5 / 59.6               | 10 min / 75 min
 1024c13+**flip**            | 60.3 / 62.7   			| 14 min / 120 min
-650c11-256g-160c9           | 61.8 / 64.1 (1 test)		| 45 min / 160 min
-650c11-256g-160c9+**flip**  | **65.9 / 67.1** (1 test)  | 70 min / 300 min
-
+1024c11-256g-160c9           | 61.8 / 64.1 (1 test)		| 45 min / 160 min
+1024c11-256g-160c9+**flip**  | 65.9 / 67.1 (1 test)  | 70 min / 300 min
+1024c5-32g-256c5-32g-1024c5+**augment** | **67.8** / - (1 test)  | - / -
 
 ### STL-10
 
@@ -159,11 +152,12 @@ Model                           | STL-10            | STL-10 (total time for 10 
 -------|:--------:|:--------:
 1024c29                         | 60.0 / 62.8       | 32 min / 34 min
 1024c29+**flip**                | 64.1 / 66.1       | 43 min / 46 min
-670c21-256g-160c13              | 66.7 / 69.8       | 57 min / 63 min
-670c21-256g-160c13+**flip**     | **70.8 / 72.6**   | 75 min / 85 min
+1024c21-256g-160c13              | 66.7 / 69.8      | 57 min / 63 min
+1024c21-256g-160c13+**flip**     | 70.8 / 72.6      | 75 min / 85 min
+1024c7-32g-256c5-32g-1024c5+**augment** | **74.5** / -  | - / -
 
 Full definitions of architectures are following:
 
 1 layer: `1024c29-20p-conv0_4`
-
 2 layers: `1024c21-4p-conv0_4__Ng-4ch-160c13-8p-conv2_3`
+3 layers: `1024c7-4p-conv0_3__32g-32ch-256c5-4p-conv0_2__32g-256ch-1024c5-3p-conv0_2`
