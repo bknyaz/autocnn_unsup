@@ -49,7 +49,7 @@ We use VLFeat's k-means to obtain our results.
 ## Results
 - So far, the model is purely unsupervised, i.e., label information is not used to train filters.
 - **flip** - indicates that flipping (horizontal reflection, mirroring) is applied both for training and test samples.
- - **augment** - indicates taking random crops, flipping, rotation and scaling.
+- **augment** - indicates taking random crops, flipping, rotation and scaling.
 - We report 2 results (in table cells): with a single SVM / SVM committee.
 
 ### MNIST
