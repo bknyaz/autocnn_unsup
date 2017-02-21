@@ -159,5 +159,7 @@ Model                           | STL-10            | STL-10 (total time for 10 
 Full definitions of architectures are following:
 
 1 layer: `1024c29-20p-conv0_4`
+
 2 layers: `1024c21-4p-conv0_4__Ng-4ch-160c13-8p-conv2_3`
+
 3 layers: `1024c7-4p-conv0_3__32g-32ch-256c5-4p-conv0_2__32g-256ch-1024c5-3p-conv0_2`
