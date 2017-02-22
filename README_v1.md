@@ -1,5 +1,5 @@
 ## Update
-This version of README is kept for reference. To reproduce these results, use the following commit f8f94e1c7135d706561a630f151ca0af478b864b .
+This version of README is kept for reference. To reproduce these results, use the following commit [f8f94e1] (https://github.com/bknyaz/autocnn_unsup/commit/f8f94e1c7135d706561a630f151ca0af478b864b).
 
 # autocnn_unsup
 Matlab scripts implementing the model from our work 
