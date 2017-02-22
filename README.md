@@ -1,6 +1,6 @@
 # autocnn_unsup
 Matlab scripts implementing the model from "Recursive Autoconvolution for Unsupervised Learning of Convolutional Neural Networks" accepted to IJCNN-2017. The paper will be available soon.
-There is the [`previous version of this paper`] (http://arxiv.org/abs/1606.00611).
+There is the [`previous version of this paper`] (http://arxiv.org/abs/1606.00611) and a corresponding [reference sheet]  (https://github.com/bknyaz/autocnn_unsup/blob/master/README_v1.md).
 There is also simple [Python code] (https://github.com/bknyaz/autocnn_unsup_py) to learn filters with recursive autoconvolution and k-means.
 
 Scripts for MNIST ([autocnn_mnist.m] (autocnn_mnist.m)), CIFAR-10 (CIFAR-100) ([autocnn_cifar.m] (autocnn_cifar.m)) and STL-10 ([autocnn_stl10.m] (autocnn_stl10.m)) are available.
