@@ -75,9 +75,9 @@ Test accuracy (%) on CIFAR-10 (400) with 400 labeled images per class and using 
 
 Model                             | CIFAR-10 (400)      | CIFAR-10  | CIFAR-100
 -------|:--------:|:--------:|:--------:
-AutoCNN-L+**flip** + LinearSVM    | 77.6 &plusmn; 0.3   | 84.4      | -
+AutoCNN-L + **flip** + LinearSVM    | 77.6 &plusmn; 0.3   | 84.4      | -
 AutoCNN-L32 + RBFSVM              | 76.4 &plusmn; 0.4   | 85.4      | 63.9
-AutoCNN-L32+**flip** + RBFSVM     | 79.4 &plusmn; 0.3   | 87.9      | 67.8
+AutoCNN-L32 + **flip** + RBFSVM     | 79.4 &plusmn; 0.3   | 87.9      | 67.8
 
 AutoCNN-L: `256c5-3p-conv0_3__1g-256ch-1024c5-3p-conv0_3__1g-1024ch-2048c5-3p-conv0_2`
 
@@ -90,12 +90,12 @@ Average test accuracy (%) on STL-10 using 10 predefined folds.
 
 Model                                   | STL-10            
 -------|:--------:|:--------:
-AutoCNN-L+**augment** + LinearSVM       | 73.1 &plusmn; 0.5     
+AutoCNN-L + **augment** + LinearSVM       | 73.1 &plusmn; 0.5     
 AutoCNN-L32 + RBFSVM                    | 68.7 &plusmn; 0.5 
-AutoCNN-L32+**augment** + RBFSVM        | 74.5 &plusmn; 0.6
+AutoCNN-L32 + **augment** + RBFSVM        | 74.5 &plusmn; 0.6
 
 AutoCNN-L: `256c7-4p-conv0_3__1g-256ch-1024c5-4p-conv0_3__1g-1024ch-2048c5-3p-conv0_2`
 
 AutoCNN-L32: `1024c7-5p-conv0_3__32g-32ch-256c5-4p-conv0_2__32g-256ch-1024c5-3p-conv0_2`
 
-AutoCNN-L32+**augment**: `1024c7-4p-conv0_3__32g-32ch-256c5-4p-conv0_2__32g-256ch-1024c5-3p-conv0_2`
+AutoCNN-L32 + **augment**: `1024c7-4p-conv0_3__32g-32ch-256c5-4p-conv0_2__32g-256ch-1024c5-3p-conv0_2`
