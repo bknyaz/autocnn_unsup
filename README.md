@@ -54,6 +54,7 @@ We use VLFeat's k-means to obtain our results.
 - The model is purely unsupervised, i.e., label information is not used to train filters.
 - **flip** - flipping (horizontal reflection, mirroring) is applied both for training and test samples.
 - **augment** - taking random crops, flipping, rotation and scaling.
+
 A convolutional neural network (CNN) trained layer wise using unsupervised learning methods 
 and recursive autoconvolution is abbreviated as AutoCNN.
 
@@ -64,9 +65,9 @@ Model           | MNIST (100)         | MNIST
 AutoCNN-S1-128  | 2.45 &plusmn; 0.10  | 0.69
 AutoCNN-S2      | 1.75 &plusmn; 0.10  | 0.39
 
-AutoCNN-S1-128: `128c11-4p-conv1_3`
+AutoCNN-S1-128: `128c11-4p-conv1_3` + LinearSVM
 
-AutoCNN-S2: `128c7-5p-3s-conv1_3__1g-128ch-1024c5-3p-conv0_2`
+AutoCNN-S2: `128c7-5p-3s-conv1_3__1g-128ch-1024c5-3p-conv0_2` + LinearSVM
 
 
 ### CIFAR-10 and CIFAR-100
@@ -78,9 +79,9 @@ AutoCNN-L+**flip**    | 77.6 &plusmn; 0.3   | 84.4      | -
 AutoCNN-L32           | 76.4 &plusmn; 0.4   | 85.4      | 63.9
 AutoCNN-L32+**flip**  | 79.4 &plusmn; 0.3   | 87.9      | 67.8
 
-AutoCNN-L: `256c5-3p-conv0_3__1g-256ch-1024c5-3p-conv0_3__1g-1024ch-2048c5-3p-conv0_2`
+AutoCNN-L: `256c5-3p-conv0_3__1g-256ch-1024c5-3p-conv0_3__1g-1024ch-2048c5-3p-conv0_2` + LinearSVM
 
-AutoCNN-L32: `1024c5-3p-conv0_3__32g-32ch-256c5-3p-conv0_2__32g-256ch-1024c5-3p-conv0_2`
+AutoCNN-L32: `1024c5-3p-conv0_3__32g-32ch-256c5-3p-conv0_2__32g-256ch-1024c5-3p-conv0_2` + RBFSVM
 
 
 ### STL-10
@@ -93,8 +94,8 @@ AutoCNN-L+**augment**       | 73.1 &plusmn; 0.5
 AutoCNN-L32                 | 68.7 &plusmn; 0.5 
 AutoCNN-L32+**augment**     | 74.5 &plusmn; 0.6
 
-AutoCNN-L: `256c7-4p-conv0_3__1g-256ch-1024c5-4p-conv0_3__1g-1024ch-2048c5-3p-conv0_2`
+AutoCNN-L: `256c7-4p-conv0_3__1g-256ch-1024c5-4p-conv0_3__1g-1024ch-2048c5-3p-conv0_2` + LinearSVM
 
-AutoCNN-L32: `1024c7-5p-conv0_3__32g-32ch-256c5-4p-conv0_2__32g-256ch-1024c5-3p-conv0_2`
+AutoCNN-L32: `1024c7-5p-conv0_3__32g-32ch-256c5-4p-conv0_2__32g-256ch-1024c5-3p-conv0_2` + LinearSVM
 
-AutoCNN-L32+**augment**: `1024c7-4p-conv0_3__32g-32ch-256c5-4p-conv0_2__32g-256ch-1024c5-3p-conv0_2`
+AutoCNN-L32+**augment**: `1024c7-4p-conv0_3__32g-32ch-256c5-4p-conv0_2__32g-256ch-1024c5-3p-conv0_2` + RBFSVM
