@@ -347,6 +347,7 @@ try
               test.scores{end+1} = test_results.scores;
               test.predicted_labels{end+1} = test_results.predicted_labels;
               test.net{end+1} = net;
+              test.model{end+1} = test_results.model;
             end
             test_results = test;
         else
@@ -354,6 +355,7 @@ try
             test_results.scores = {test_results.scores};
             test_results.predicted_labels = {test_results.predicted_labels};
             test_results.net = {net};
+            test_results.model = {test_results.model};
         end
     else
         test_results.net = net;
@@ -416,7 +418,12 @@ if (isfield(opts,'matconvnet') && exist(opts.matconvnet,'dir'))
     addpath(fullfile(opts.matconvnet,'matlab/mex'))
     run(fullfile(opts.matconvnet,'matlab/vl_setupnn.m'))
     vl_nnconv(rand(32,32,3,10,'single'),rand(5,5,3,20,'single'),[]);
-    vl_nnconv(gpuArray(rand(32,32,3,10,'single')),gpuArray(rand(5,5,3,20,'single')),[]);
+    try
+        vl_nnconv(gpuArray(rand(32,32,3,10,'single')),gpuArray(rand(5,5,3,20,'single')),[]);
+    catch e
+        warning('MatConvNet: GPU not available: %s', e.message)
+        for k=1:numel(net.layers), net.layers{k}.gpu = false; end
+    end
     fprintf('MatConvNet is OK \n')
 else
     warning('MatConvNet not found, Matlab implementation will be used')
