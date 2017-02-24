@@ -77,17 +77,18 @@ if (strcmpi(opts.dataset,'stl10') && opts.fold_id > 1 && ~opts.val)
         train_features = sparse(double(train_features));
         model = train(train_labels, train_features, sprintf('-s 1 -q -c %f -B %f', C, B));
         clear train_features
-        test_results.scores = predict_batches(opts.test_features, repmat(data_test.labels,size(opts.test_features,1)/length(data_test.labels),1), data_test.labels, unique(data_test.labels), model, @predict, opts);
-        [~,idx] = max(test_results.scores,[],2);
-        for i=1:length(idx)
-            idx(i) = model.Label(idx(i));
+        scores = predict_batches(opts.test_features, repmat(data_test.labels,size(opts.test_features,1)/length(data_test.labels),1), data_test.labels, unique(data_test.labels), model, @predict, opts);
+        test_results.scores = zeros(size(scores));
+        for i=1:length(model.Label)
+            test_results.scores(:,model.Label(i)+1) = scores(:,i);
         end
-        test_results.predicted_labels = idx;
+        [~,idx] = max(test_results.scores,[],2);
+        test_results.predicted_labels = idx-1;
         test_results.acc(1,1) = nnz(idx == data_test.labels)/numel(data_test.labels)*100;
         test_results.acc(2,1) = test_results.acc(1,1);
         fprintf('Accuracy of a single classifier model = %f (%d/%d)\n', test_results.acc(1), nnz(idx == data_test.labels), length(data_test.labels))
     else
-        [test_results.acc, test_results.scores, test_results.predicted_labels] = ...
+        [test_results.acc, test_results.scores, test_results.predicted_labels, ~] = ...
             classifier_committee(train_features, opts.test_features, train_labels, data_test.labels, opts);
     end
     test_results = save_data(test_results, net, opts);
@@ -139,14 +140,14 @@ n = min(size(data_train.unlabeled_images_whitened,1),10e3);
 [train_features, stats] = forward_pass(data_train.unlabeled_images_whitened(1:n,:), net);
 opts.PCA_dim(opts.PCA_dim > size(train_features,2)) = [];
     
-%% Dimensionality reduction (PCA) for groups of feature maps
+%% Dimension reduction (PCA) for groups of feature maps
 opts.pca_mode = 'pcawhiten';
 if (~isfield(opts,'pca_fast') || isempty(opts.pca_fast))
     opts.pca_fast = true;
 end
 n_max_pca = 7*10^5; % depends on your RAM and the number of unlabeled samples
 if (size(train_features,2) > n_max_pca)
-    fprintf('\n-> %s for groups of feature maps \n', upper('dimensionality reduction'))
+    fprintf('\n-> %s for groups of feature maps \n', upper('dimension reduction'))
     % perform PCA for the last layer feature map groups independently
     % reshape features to divide them according to the groups
     sz = [net.layers{end}.sample_size(1:2)./net.layers{end}.pool_size, net.layers{end}.n_filters, net.layers{end}.n_groups];
@@ -209,9 +210,9 @@ else
 end
 
 clear data_train
-%% Dimensionality reduction (PCA)
+%% Dimension reduction (PCA)
 if (~isempty(opts.PCA_dim) && max(opts.PCA_dim) > 0 && size(train_features,2) > max(opts.PCA_dim))
-    fprintf('\n-> %s \n', upper('dimensionality reduction'))
+    fprintf('\n-> %s \n', upper('dimension reduction'))
     opts.pca_dim = min(size(train_features,2),max(opts.PCA_dim));
     opts.verbose = true;
     [~, PCA_matrix, data_mean, L_regul] = pca_zca_whiten(train_features(1:min(10^4,size(train_features,1)),:), opts);
@@ -225,6 +226,7 @@ if (inplace_classifier)
     % for large features learn linear SVM right here
     [B,C] = cross_val(sparse(double(train_features(1:min(10^4,opts.n_train),:))), double(train_labels(1:min(10^4,opts.n_train))), opts);
     train_features = sparse(double(train_features));
+    fprintf('\n-> %s with %s \n', upper('classification (training)'), upper(opts.classifier));
     model = train(train_labels, train_features, sprintf('-s 1 -q -c %f -B %f', C, B));
     clear train_features
 end
@@ -248,9 +250,9 @@ else
   test_features = forward_pass(data_test.images, net);
 end
 
-%% Dimensionality reduction (PCA)
+%% Dimension reduction (PCA)
 if (~isempty(opts.PCA_dim) && max(opts.PCA_dim) > 0 && size(train_features,2) > max(opts.PCA_dim))
-    fprintf('\n-> %s \n', upper('dimensionality reduction'))
+    fprintf('\n-> %s \n', upper('dimension reduction'))
     test_features = pca_zca_whiten(test_features, opts, PCA_matrix, data_mean, L_regul);
 end
 if (~isempty(opts.norm))
@@ -258,25 +260,29 @@ if (~isempty(opts.norm))
 end
 
 %% Classification
-fprintf('\n-> %s with %s \n', upper('classification'), upper(opts.classifier));
-
 if (inplace_classifier)
+    fprintf('\n-> %s with %s \n', upper('classification (prediction) '), upper(opts.classifier));
     % for large features
-    test_results.scores = predict_batches(test_features, repmat(data_test.labels,size(test_features,1)/length(data_test.labels),1), data_test.labels, unique(data_test.labels), model, @predict, opts);
-    [~,idx] = max(test_results.scores,[],2);
-    for i=1:length(idx)
-        idx(i) = model.Label(idx(i));
+    scores = predict_batches(test_features, repmat(data_test.labels,size(test_features,1)/length(data_test.labels),1), data_test.labels, unique(data_test.labels), model, @predict, opts);
+    test_results.scores = zeros(size(scores));
+    for i=1:length(model.Label)
+        test_results.scores(:,model.Label(i)+1) = scores(:,i);
     end
-    test_results.predicted_labels = idx;
+    [~,idx] = max(test_results.scores,[],2);
+    idx = idx-1;
+    test_results.predicted_labels = {idx}; % in cell to keep consistency with other code
+    test_results.scores = {test_results.scores};
     test_results.acc(1,1) = nnz(idx == data_test.labels)/numel(data_test.labels)*100;
     test_results.acc(2,1) = test_results.acc(1,1);
     fprintf('Accuracy of a single classifier model = %f (%d/%d)\n', test_results.acc(1), nnz(idx == data_test.labels), length(data_test.labels))
     test_results.svm_params = [];
 else
-    [test_results.acc, test_results.scores, test_results.predicted_labels, test_results.svm_params] = ...
+    fprintf('\n-> %s with %s \n', upper('classification'), upper(opts.classifier));
+    [test_results.acc, test_results.scores, test_results.predicted_labels, test_results.svm_params, model] = ...
         classifier_committee(train_features, test_features, train_labels, data_test.labels, opts);
 end
 test_results.net = net;
+test_results.model = model;
 
 %% Save data
 test_results = save_data(test_results, net, opts, test_features);
@@ -284,6 +290,12 @@ test_results = save_data(test_results, net, opts, test_features);
 end
 
 function [B,C] = cross_val(train_data_dim_cv, train_labels, opts)
+
+if isfield(opts,'SVM_C') && isfield(opts,'SVM_B')
+    C = opts.SVM_C;
+    B = opts.SVM_B;
+    return
+end
 
 if isfield(opts,'dataset') && strcmpi(opts.dataset,'mnist')
     [C_val,B_val] = meshgrid([1e-4,2e-4,4e-4,8e-4,16e-4,32e-4],[0,3,5])
@@ -309,12 +321,7 @@ if (opts.n_folds > 1)
     folds_str = sprintf('_%dfolds', opts.n_folds);
 end
 test_file_name = fullfile(opts.test_path,sprintf('%s_%d%s_%s.mat', opts.dataset, opts.n_train, folds_str, net.arch))
-if (exist(test_file_name','file') && opts.fold_id == 1)
-    warning('file already exists')
-    if (opts.n_folds == 1) 
-      return; % do not overwrite data in case of one fold
-    end
-end
+test_results.test_file_name = test_file_name;
 try
     % prevent saving huge PCA matrices
     if (~isempty(opts.PCA_dim) && max(opts.PCA_dim) > 0)
@@ -325,7 +332,7 @@ try
       end
     end
     
-    if ~(strcmpi(opts.dataset,'stl10') && opts.n_folds > 1 && ~opts.val)
+    if ~(strcmpi(opts.dataset,'stl10') && opts.n_folds > 1 && ~opts.val) && ~strcmpi(opts.dataset,'icv')
         for layer_id=1:numel(net.layers) 
           net.layers{layer_id}.filters = [];
         end
@@ -360,7 +367,16 @@ try
         if opts.fold_id == 10
             test_results.net = []; % too large to keep
         end
-      save(test_file_name,'-struct','test_results','-v7.3')
+        if (exist(test_file_name','file') && opts.fold_id == 1)
+            if (opts.n_folds ~= 1) % do not overwrite data in case of one fold
+                warning('file already exists and will be overwritten')
+                save(test_file_name,'-struct','test_results','-v7.3')
+            else
+                warning('file already exists and will not be overwritten')
+            end
+        else
+            save(test_file_name,'-struct','test_results','-v7.3')
+        end
     end
 catch e 
     warning('error while saving test file: %s', e.message)
@@ -460,7 +476,7 @@ function print_data_stats(data_train, data_test)
 fprintf('training labels: %s \n', num2str(unique(data_train.labels)')) 
 fprintf('test labels: %s \n', num2str(unique(data_test.labels)')) 
 if (any(unique(data_train.labels) ~= unique(data_test.labels)))
-    error('invalid labels')
+    warning('invalid labels')
 end
 for label = min(data_train.labels):max(data_train.labels)
     fprintf('label %d, N training: %d, N test: %d \n', label, nnz(data_train.labels == label), nnz(data_test.labels == label));

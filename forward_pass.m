@@ -135,7 +135,7 @@ for layer_id = 1:n_layers
     net.layers{layer_id}.filters = [];
 end
 
-% Dimensionality reduction (optional)
+% Dimension reduction (optional)
 features = pca_whiten_wrap(gather(cat(2,features{1},fmaps_out_multi{:})), net.layers{layer_id});
     
 fmaps_out = zeros(n_samples, size(features,2), 'single');
@@ -159,7 +159,11 @@ for batch_id = 1:n_batches
         [features, stats{layer_id}{batch_id}] = forward_pass_batch(features, filters{layer_id}, net.layers{layer_id});
         % apply feature normalization for each sample (except for the last layer)
         if (~isempty(net.layers{layer_id}.norm) && layer_id < n_layers)
-            features{1} = feature_scaling(features{1}, net.layers{layer_id}.norm);
+            if isfield(net.layers{layer_id}, 'norm_coef') && net.layers{layer_id}.norm_coef > 0
+                features{1} = feature_scaling(features{1}, net.layers{layer_id}.norm, net.layers{layer_id}.norm_coef);
+            else
+                features{1} = feature_scaling(features{1}, net.layers{layer_id}.norm);
+            end
         end
         if (net.layers{layer_id}.multidict)
             fmaps_out_batch(:,sum(feature_length(1:layer_id))+1:sum(feature_length(1:layer_id+1))) = features{2};
@@ -171,10 +175,14 @@ for batch_id = 1:n_batches
     
     % normalize concatenated features
     if (~isempty(net.layers{layer_id}.norm))
-        fmaps_out_batch = feature_scaling(fmaps_out_batch, net.layers{layer_id}.norm);
+        if isfield(net.layers{layer_id}, 'norm_coef') && net.layers{layer_id}.norm_coef > 0
+            fmaps_out_batch = feature_scaling(fmaps_out_batch, net.layers{layer_id}.norm, net.layers{layer_id}.norm_coef);
+        else
+            fmaps_out_batch = feature_scaling(fmaps_out_batch, net.layers{layer_id}.norm);
+        end
     end
 
-    % Dimensionality reduction (optional)
+    % Dimension reduction (optional)
     fmaps_out(samples_ids,:) = pca_whiten_wrap(gather(fmaps_out_batch), net.layers{layer_id});
     
     time = toc(time);

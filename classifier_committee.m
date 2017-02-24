@@ -1,8 +1,9 @@
-function [acc,scores,predicted_labels,svm_params] = classifier_committee(train_data, test_data, train_labels, test_labels, opts)
+function [acc,scores,predicted_labels,svm_params,model] = classifier_committee(train_data, test_data, train_labels, test_labels, opts)
 % Trains a committee of J>0 SVM (or LDA) models
 % opts - model and SVM (or LDA) parameters
 % To train SVMs on a GPU GTSVM must be installed: http://ttic.uchicago.edu/~cotter/projects/gtsvm/
 
+model = [];
 J = max(1,length(opts.PCA_dim)); % the number of SVM (or LDA) models in the committee
 acc = zeros(2,J); % predicting accuracies in %
 scores = cell(1,J); % SVM (or LDA) scores
