@@ -22,7 +22,7 @@ test_labels = test_labels-min(test_labels);
 labels = unique(train_labels)';
 n_classes = length(labels);
 if (n_classes ~= length(unique(test_labels)))
-    error('all classes must present in both training and test data')
+    warning('all classes must present in both training and test data')
 end
 fprintf('%d training labels: \t %s \n', n_classes, num2str(labels)) 
 fprintf('%d test labels: \t %s \n', n_classes, num2str(unique(test_labels)'))
