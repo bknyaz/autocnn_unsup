@@ -41,7 +41,7 @@ fprintf('training id min = %d, max = %d \n', min(train_ids), max(train_ids))
 print_data_stats(data_train, data_test);
 
 % for large features call an SVM classifier (liblinear) from this script
-inplace_classifier = strcmpi(opts.classifier,'liblinear') && (net.layers{1}.augment || opts.n_train > 3e4) && (isempty(opts.PCA_dim) || opts.PCA_dim <= 0);
+inplace_classifier = strcmpi(opts.classifier,'liblinear') && (net.layers{1}.augment || opts.n_train > 3e4) && (isempty(opts.PCA_dim) || opts.PCA_dim(1) <= 0);
 
 if (strcmpi(opts.dataset,'stl10') && opts.fold_id > 1 && ~opts.val)
 %% STL-10 code for folds 2-10
@@ -136,7 +136,11 @@ fprintf('\nlearning %s and %s for %d layers done \n', upper('connections'), uppe
 %% Forward pass for the first N training or unlabeled samples
 for layer_id=1:numel(net.layers), net.layers{layer_id}.stats = []; net.layers{layer_id}.PCA_matrix = []; end
 fprintf('\n-> processing %s samples \n', upper('training (unlabeled)'))
-n = min(size(data_train.unlabeled_images_whitened,1),10e3);
+if (~isfield(opts,'pca_n_samples') || isempty(opts.pca_n_samples))
+    n = min(size(data_train.unlabeled_images_whitened,1),10e3);
+else
+    n = min(size(data_train.unlabeled_images_whitened,1),opts.pca_n_samples);
+end
 [train_features, stats] = forward_pass(data_train.unlabeled_images_whitened(1:n,:), net);
 opts.PCA_dim(opts.PCA_dim > size(train_features,2)) = [];
     
@@ -324,7 +328,7 @@ test_file_name = fullfile(opts.test_path,sprintf('%s_%d%s_%s.mat', opts.dataset,
 test_results.test_file_name = test_file_name;
 try
     % prevent saving huge PCA matrices
-    if (~isempty(opts.PCA_dim) && max(opts.PCA_dim) > 0)
+    if (~isempty(opts.PCA_dim) && max(opts.PCA_dim) > 0 && ~strcmpi(opts.dataset,'icv'))
       for layer_id=1:numel(net.layers) 
           PCA_matrix{layer_id} = net.layers{layer_id}.PCA_matrix; net.layers{layer_id}.PCA_matrix = []; 
           if (isfield(net.layers{layer_id},'data_mean')), data_mean{layer_id} = net.layers{layer_id}.data_mean; net.layers{layer_id}.data_mean = []; end

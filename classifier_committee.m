@@ -3,11 +3,11 @@ function [acc,scores,predicted_labels,svm_params,model] = classifier_committee(t
 % opts - model and SVM (or LDA) parameters
 % To train SVMs on a GPU GTSVM must be installed: http://ttic.uchicago.edu/~cotter/projects/gtsvm/
 
-model = [];
 J = max(1,length(opts.PCA_dim)); % the number of SVM (or LDA) models in the committee
 acc = zeros(2,J); % predicting accuracies in %
 scores = cell(1,J); % SVM (or LDA) scores
 predicted_labels = cell(1,J); % test data labels predicted with SVMs (or LDA)
+model = cell(1,J);
 
 % the SVM regularization constant for RBF SVM (is fixed in all experiments)
 if (~isfield(opts,'SVM_C')), C = 16; else C = opts.SVM_C; end
@@ -97,7 +97,7 @@ for j=1:J
         context.initialize(train_data_dim, train_labels, true, C, 'gaussian', 1/(size(train_data_dim,2)), 0, 0, false);
         context.optimize( 0.01, 1000000 );
     elseif (strcmpi(opts.classifier,'libsvm'))
-        model = svmtrain(train_labels, train_data_dim, sprintf('-t %d -q -c %f', kernel, C));
+        model{j} = svmtrain(train_labels, train_data_dim, sprintf('-t %d -q -c %f', kernel, C));
         predict_fn = @svmpredict;
     elseif (strcmpi(opts.classifier,'liblinear'))
         if (~issparse(train_data_dim) && ~cv_mode)
@@ -141,10 +141,10 @@ for j=1:J
                 end
             end
         end
-        model = train(train_labels, train_data_dim, sprintf('-s 1 -q -c %f -B %f', C, B));
+        model{j} = train(train_labels, train_data_dim, sprintf('-s 1 -q -c %f -B %f', C, B));
         predict_fn = @predict;
     elseif (strcmpi(opts.classifier,'lda'))
-        model = fitcdiscr(train_data_dim, train_labels, 'SaveMemory','on');
+        model{j} = fitcdiscr(train_data_dim, train_labels, 'SaveMemory','on');
     else
         error('not supported classifier')
     end
@@ -166,12 +166,12 @@ for j=1:J
       test_data_dim = feature_scaling(test_data_dim, opts.norm);
     end
     if (strcmpi(opts.classifier,'libsvm') || strcmpi(opts.classifier,'liblinear'))
-       [scores{j}, predicted_labels{j}, acc(1,j)] = predict_batches(test_data_dim, test_labels_tmp, test_labels, labels, model, predict_fn, opts);
+       [scores{j}, predicted_labels{j}, acc(1,j)] = predict_batches(test_data_dim, test_labels_tmp, test_labels, labels, model{j}, predict_fn, opts);
     else
         if (strcmpi(opts.classifier,'gtsvm'))
             scores{j} = context.classify(test_data_dim);
         else
-            [~, scores{j}] = predict(model, test_data_dim);
+            [~, scores{j}] = predict(model{j}, test_data_dim);
         end
         n = size(scores{j},1)/length(test_labels);
         if (mod(size(scores{j},1),length(test_labels)) == 0 && n > 1)
