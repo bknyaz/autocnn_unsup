@@ -5,7 +5,7 @@ There is also simple [Python code](https://github.com/bknyaz/autocnn_unsup_py) t
 
 Scripts for MNIST ([autocnn_mnist.m](autocnn_mnist.m)), CIFAR-10 (CIFAR-100) ([autocnn_cifar.m](autocnn_cifar.m)) and STL-10 ([autocnn_stl10.m](autocnn_stl10.m)) are available.
 
-To reproduce results from the paper, run scripts from the [experiments](https://github.com/bknyaz/autocnn_unsup_v2/tree/master/experiments) folder.
+To reproduce results from the paper, run scripts from the [experiments](./experiments) folder.
 
 ## Example of running
 ```matlab
