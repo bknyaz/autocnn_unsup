@@ -1,9 +1,9 @@
 ## Update
-This version of README is kept for reference. To reproduce these results, use the following commit [f8f94e1] (https://github.com/bknyaz/autocnn_unsup/commit/f8f94e1c7135d706561a630f151ca0af478b864b).
+This version of README is kept for reference. To reproduce these results, use the following commit [f8f94e1](https://github.com/bknyaz/autocnn_unsup/commit/f8f94e1c7135d706561a630f151ca0af478b864b).
 
 # autocnn_unsup
 Matlab scripts implementing the model from our work 
-[`Autoconvolution for Unsupervised Feature Learning`] (http://arxiv.org/abs/1606.00611) 
+[`Autoconvolution for Unsupervised Feature Learning`](http://arxiv.org/abs/1606.00611) 
 on unsupervised layer-wise training of a convolution neural network based on recursive autoconvolution (AutoCNN).
 
 We present scripts for MNIST ([autocnn_mnist.m] (autocnn_mnist.m)), CIFAR-10 (CIFAR-100) ([autocnn_cifar.m] (autocnn_cifar.m)) 
@@ -24,20 +24,20 @@ autocnn_cifar(opts, 'augment', true)
 This script should obtain an average accuracy of about 78.5% on CIFAR-10 (400).
 
 ## Requirements
-For faster filter learning it's recommended to use [VLFeat] (http://www.vlfeat.org/), and for faster forward 
-pass - [MatConvNet] (http://www.vlfeat.org/matconvnet/). 
+For faster filter learning it's recommended to use [VLFeat](http://www.vlfeat.org/), and for faster forward 
+pass - [MatConvNet](http://www.vlfeat.org/matconvnet/). 
 Although, in the scripts we try to make it possible to choose between built-in Matlab and third party implementations.
 
-For classification it's required to install either [GTSVM] (http://ttic.uchicago.edu/~cotter/projects/gtsvm/),
-[LIBLINEAR] (https://github.com/cjlin1/liblinear) or [LIBSVM] (https://github.com/cjlin1/libsvm).
+For classification it's required to install either [GTSVM](http://ttic.uchicago.edu/~cotter/projects/gtsvm/),
+[LIBLINEAR](https://github.com/cjlin1/liblinear) or [LIBSVM](https://github.com/cjlin1/libsvm).
 Compared to LIBSVM, GTSVM is much faster (because of GPU) and 
 implements a one-vs-all SVM classifier (which is usually better for datasets like CIFAR-10 and STL-10). 
-[LIBLINEAR] (https://github.com/cjlin1/liblinear) shows worse performance compared to the RBF kernel available 
+[LIBLINEAR](https://github.com/cjlin1/liblinear) shows worse performance compared to the RBF kernel available 
 both in GTSVM and LIBSVM.
-If neither of these is available, the code will use Matlab's [LDA] (http://www.mathworks.com/help/stats/fitcdiscr.html).
+If neither of these is available, the code will use Matlab's [LDA](http://www.mathworks.com/help/stats/fitcdiscr.html).
 
 ## Learning methods
-Currently, the supported unsupervised learning methods are k-means, [convolutional k-means] (conv_kmeans.m), k-medoids, GMM, PCA, [ICA and ISA] (ica.m).
+Currently, the supported unsupervised learning methods are k-means, [convolutional k-means](conv_kmeans.m), k-medoids, GMM, PCA, [ICA and ISA](ica.m).
 We use VLFeat's k-means to obtain our results.
 
 ## Testing environment
