@@ -3,7 +3,7 @@ This version of README is kept for reference. To reproduce these results, use th
 
 # autocnn_unsup
 Matlab scripts implementing the model from our work 
-[`Autoconvolution for Unsupervised Feature Learning`](http://arxiv.org/abs/1606.00611) 
+[`Autoconvolution for Unsupervised Feature Learning`](https://arxiv.org/abs/1606.00611v1) 
 on unsupervised layer-wise training of a convolution neural network based on recursive autoconvolution (AutoCNN).
 
 We present scripts for MNIST ([autocnn_mnist.m](autocnn_mnist.m)), CIFAR-10 (CIFAR-100) ([autocnn_cifar.m](autocnn_cifar.m)) 
