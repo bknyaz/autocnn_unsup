@@ -7,6 +7,7 @@ Scripts for MNIST ([autocnn_mnist.m](autocnn_mnist.m)), CIFAR-10 (CIFAR-100) ([a
 
 To reproduce results from the paper, run scripts from the [experiments](./experiments) folder.
 
+
 ## Example of running
 ```matlab
 opts.matconvnet = 'your_path/matconvnet';
@@ -99,3 +100,15 @@ AutoCNN-L: `256c7-4p-conv0_3__1g-256ch-1024c5-4p-conv0_3__1g-1024ch-2048c5-3p-co
 AutoCNN-L32: `1024c7-5p-conv0_3__32g-32ch-256c5-4p-conv0_2__32g-256ch-1024c5-3p-conv0_2`
 
 AutoCNN-L32 + **augment**: `1024c7-4p-conv0_3__32g-32ch-256c5-4p-conv0_2__32g-256ch-1024c5-3p-conv0_2`
+
+
+## Citation
+
+```
+@inproceedings{knyazev2017autoconvolution,
+  title={Recursive Autoconvolution for Unsupervised Learning of Convolutional Neural Networks},
+  author={Knyazev, Boris and Barth, Erhardt and Martinetz, Thomas},
+  booktitle={International Joint Conference on Neural Networks},
+  year={2017}
+}
+```
