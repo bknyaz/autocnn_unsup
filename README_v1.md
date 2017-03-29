@@ -6,8 +6,8 @@ Matlab scripts implementing the model from our work
 [`Autoconvolution for Unsupervised Feature Learning`](http://arxiv.org/abs/1606.00611) 
 on unsupervised layer-wise training of a convolution neural network based on recursive autoconvolution (AutoCNN).
 
-We present scripts for MNIST ([autocnn_mnist.m] (autocnn_mnist.m)), CIFAR-10 (CIFAR-100) ([autocnn_cifar.m] (autocnn_cifar.m)) 
-and STL-10 ([autocnn_stl10.m] (autocnn_stl10.m)). 
+We present scripts for MNIST ([autocnn_mnist.m](autocnn_mnist.m)), CIFAR-10 (CIFAR-100) ([autocnn_cifar.m](autocnn_cifar.m)) 
+and STL-10 ([autocnn_stl10.m](autocnn_stl10.m)). 
 Our slighly optimized scripts are much faster (see Tables below) than those used to produce results in the paper. 
 Moreover, the classification results are also a little bit improved.
 
