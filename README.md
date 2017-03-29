@@ -89,7 +89,7 @@ AutoCNN-L32: `1024c5-3p-conv0_3__32g-32ch-256c5-3p-conv0_2__32g-256ch-1024c5-3p-
 Average test accuracy (%) on STL-10 using 10 predefined folds.
 
 Model                                   | STL-10            
--------|:--------:|:--------:
+-------|:--------:
 AutoCNN-L + **augment** + LinearSVM       | 73.1 &plusmn; 0.5     
 AutoCNN-L32 + RBFSVM                    | 68.7 &plusmn; 0.5 
 AutoCNN-L32 + **augment** + RBFSVM        | 74.5 &plusmn; 0.6
