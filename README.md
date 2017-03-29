@@ -1,9 +1,9 @@
 # autocnn_unsup
-Matlab scripts implementing the model from "Recursive Autoconvolution for Unsupervised Learning of Convolutional Neural Networks" accepted to IJCNN-2017. The paper will be available soon.
-There is the [`previous version of this paper`] (http://arxiv.org/abs/1606.00611) and a corresponding [reference sheet]  (https://github.com/bknyaz/autocnn_unsup/blob/master/README_v1.md).
-There is also simple [Python code] (https://github.com/bknyaz/autocnn_unsup_py) to learn filters with recursive autoconvolution and k-means.
+Matlab scripts implementing the model from [`Recursive Autoconvolution for Unsupervised Learning of Convolutional Neural Networks`](http://arxiv.org/abs/1606.00611) accepted to IJCNN-2017.
+There is the [`previous version of this paper`](https://arxiv.org/abs/1606.00611v1) and a corresponding [reference sheet](https://github.com/bknyaz/autocnn_unsup/blob/master/README_v1.md).
+There is also simple [Python code](https://github.com/bknyaz/autocnn_unsup_py) to learn filters with recursive autoconvolution and k-means.
 
-Scripts for MNIST ([autocnn_mnist.m] (autocnn_mnist.m)), CIFAR-10 (CIFAR-100) ([autocnn_cifar.m] (autocnn_cifar.m)) and STL-10 ([autocnn_stl10.m] (autocnn_stl10.m)) are available.
+Scripts for MNIST ([autocnn_mnist.m](autocnn_mnist.m)), CIFAR-10 (CIFAR-100) ([autocnn_cifar.m](autocnn_cifar.m)) and STL-10 ([autocnn_stl10.m](autocnn_stl10.m)) are available.
 
 To reproduce results from the paper, run scripts from the [experiments](https://github.com/bknyaz/autocnn_unsup_v2/tree/master/experiments) folder.
 
@@ -22,30 +22,30 @@ This script should lead to an average accuracy of about 79.4% on CIFAR-10 (400).
 
 
 ## Requirements
-For faster filter learning it's recommended to use [VLFeat] (http://www.vlfeat.org/), and for faster forward 
-pass - [MatConvNet] (http://www.vlfeat.org/matconvnet/). 
+For faster filter learning it's recommended to use [VLFeat](http://www.vlfeat.org/), and for faster forward 
+pass - [MatConvNet](http://www.vlfeat.org/matconvnet/). 
 Although, in the scripts we try to make it possible to choose between built-in Matlab and third party implementations.
 
-For classification it's required to install either [GTSVM] (http://ttic.uchicago.edu/~cotter/projects/gtsvm/),
-[LIBLINEAR] (https://github.com/cjlin1/liblinear) or [LIBSVM] (https://github.com/cjlin1/libsvm).
+For classification it's required to install either [GTSVM](http://ttic.uchicago.edu/~cotter/projects/gtsvm/),
+[LIBLINEAR](https://github.com/cjlin1/liblinear) or [LIBSVM](https://github.com/cjlin1/libsvm).
 Compared to LIBSVM, GTSVM is much faster (because of GPU) and 
 implements a one-vs-all SVM classifier (which is usually better for datasets like CIFAR-10 and STL-10). 
-[LIBLINEAR] (https://github.com/cjlin1/liblinear) shows worse performance compared to the RBF kernel available 
+[LIBLINEAR](https://github.com/cjlin1/liblinear) shows worse performance compared to the RBF kernel available 
 both in GTSVM and LIBSVM.
-If neither of these is available, the code will use Matlab's [LDA] (http://www.mathworks.com/help/stats/fitcdiscr.html).
+If neither of these is available, the code will use Matlab's [LDA](http://www.mathworks.com/help/stats/fitcdiscr.html).
 
 ## Learning methods
-Currently, the supported unsupervised learning methods are k-means, [convolutional k-means] (conv_kmeans.m), k-medoids, GMM, [PCA] (pca_zca_whiten.m), [ICA and ISA] (ica.m).
+Currently, the supported unsupervised learning methods are k-means, [convolutional k-means](conv_kmeans.m), k-medoids, GMM, [PCA](pca_zca_whiten.m), [ICA and ISA](ica.m).
 We use VLFeat's k-means to obtain our results.
 
 ## Testing environment
 - Ubuntu 16.04 LTS
 - Matlab R2015b 
 - CUDA 7.5 (installed via apt-get install nvidia-cuda-toolkit)
-- [MatConvNet] (http://www.vlfeat.org/matconvnet/)
-- [cuDNN-v5] (https://developer.nvidia.com/cudnn)
-- [VLFeat] (http://www.vlfeat.org/)
-- [GTSVM] (http://ttic.uchicago.edu/~cotter/projects/gtsvm/)
+- [MatConvNet](http://www.vlfeat.org/matconvnet/)
+- [cuDNN-v5](https://developer.nvidia.com/cudnn)
+- [VLFeat](http://www.vlfeat.org/)
+- [GTSVM](http://ttic.uchicago.edu/~cotter/projects/gtsvm/)
 - 64GB RAM
 - NVIDIA GTX 980 Ti
 - Xeon CPU E5-2620 v3 @ 2.40GHz
