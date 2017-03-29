@@ -1,6 +1,8 @@
 ## Update
 This version of README is kept for reference. To reproduce these results, use the following commit [f8f94e1](https://github.com/bknyaz/autocnn_unsup/commit/f8f94e1c7135d706561a630f151ca0af478b864b).
 
+A fresh version of [README](README.md).
+
 # autocnn_unsup
 Matlab scripts implementing the model from our work 
 [`Autoconvolution for Unsupervised Feature Learning`](https://arxiv.org/abs/1606.00611v1) 
