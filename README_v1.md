@@ -44,10 +44,10 @@ We use VLFeat's k-means to obtain our results.
 - Ubuntu 16.04 LTS
 - Matlab R2015b 
 - CUDA 7.5 (installed via apt-get install nvidia-cuda-toolkit)
-- [MatConvNet] (http://www.vlfeat.org/matconvnet/)
-- [cuDNN-v5] (https://developer.nvidia.com/cudnn)
-- [VLFeat] (http://www.vlfeat.org/)
-- [GTSVM] (http://ttic.uchicago.edu/~cotter/projects/gtsvm/)
+- [MatConvNet](http://www.vlfeat.org/matconvnet/)
+- [cuDNN-v5](https://developer.nvidia.com/cudnn)
+- [VLFeat](http://www.vlfeat.org/)
+- [GTSVM](http://ttic.uchicago.edu/~cotter/projects/gtsvm/)
 - 64GB RAM
 - NVIDIA GTX 980 Ti
 - Xeon CPU E5-2620 v3 @ 2.40GHz
